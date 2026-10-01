@@ -34,6 +34,10 @@ dist-ssr/
 # PWA
 dev-dist/
 
+# Vercel (deploy-to-vercel skill)
+.vercel/
+*.tgz
+
 # IDEs
 .vscode/
 .idea/
