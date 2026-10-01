@@ -5,7 +5,7 @@ export function useOnlineStatus() {
 
   useEffect(() => {
     const handleOnline = () => setOnline(true)
-    const handleOffline = () => setOffline(false)
+    const handleOffline = () => setOnline(false)
 
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
