@@ -23,7 +23,7 @@ def crear_access_token(usuario_id: int, rol: str) -> str:
     """Crea un token de acceso JWT."""
     expire = datetime.utcnow() + timedelta(minutes=config.ACCESS_TOKEN_EXPIRE_MINUTES)
     data = {
-        "sub": usuario_id,
+        "sub": str(usuario_id),
         "rol": rol,
         "exp": expire,
     }

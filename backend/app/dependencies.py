@@ -21,9 +21,17 @@ def verificar_token(token: str) -> TokenData:
     """Verifica y decodifica un token JWT."""
     try:
         payload = jwt.decode(token, config.SECRET_KEY, algorithms=[config.ALGORITHM])
-        usuario_id: int = payload.get("sub")
+        sub = payload.get("sub")
         rol: str = payload.get("rol")
-        if usuario_id is None:
+        if sub is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token inválido",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        try:
+            usuario_id = int(sub)
+        except (TypeError, ValueError):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token inválido",

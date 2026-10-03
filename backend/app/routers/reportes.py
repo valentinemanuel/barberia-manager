@@ -109,10 +109,10 @@ def reporte_dia(
     ventas = db.query(Venta).filter(Venta.fecha >= inicio, Venta.fecha < fin).all()
     gastos = db.query(Gasto).filter(Gasto.fecha >= inicio, Gasto.fecha < fin).all()
 
-    total_cortes = sum(c.precio for c in cortes)
-    total_productos = sum(v.total for v in ventas if v.tipo == TipoVenta.PRODUCTO)
-    total_consumibles = sum(v.total for v in ventas if v.tipo == TipoVenta.CONSUMIBLE)
-    total_gastos = sum(g.monto for g in gastos)
+    total_cortes = sum((c.precio for c in cortes), Decimal("0"))
+    total_productos = sum((v.total for v in ventas if v.tipo == TipoVenta.PRODUCTO), Decimal("0"))
+    total_consumibles = sum((v.total for v in ventas if v.tipo == TipoVenta.CONSUMIBLE), Decimal("0"))
+    total_gastos = sum((g.monto for g in gastos), Decimal("0"))
     total_ingresos = total_cortes + total_productos + total_consumibles
 
     return ReporteDia(
@@ -134,9 +134,9 @@ def _calcular_ganancias(db: Session, inicio: datetime) -> Decimal:
     gastos = db.query(Gasto).filter(Gasto.fecha >= inicio).all()
 
     total_ingresos = (
-        sum(c.precio for c in cortes)
-        + sum(v.total for v in ventas)
+        sum((c.precio for c in cortes), Decimal("0"))
+        + sum((v.total for v in ventas), Decimal("0"))
     )
-    total_gastos = sum(g.monto for g in gastos)
+    total_gastos = sum((g.monto for g in gastos), Decimal("0"))
 
     return (total_ingresos - total_gastos).quantize(Decimal("0.01"))
