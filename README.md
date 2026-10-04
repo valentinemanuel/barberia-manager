@@ -1,35 +1,35 @@
-# Sistema de Gestión para Barbería
+# Barbershop Manager
 
-Sistema completo de gestión para barberías con PWA instalable, funcionamiento offline y sincronización automática.
+A complete management system for barbershops with an installable PWA, offline support, and automatic synchronization.
 
-## Características
+## Features
 
-- **Gestión de barberos**: Registro de cortes, porcentajes de ganancia, historial
-- **Catálogo de servicios**: Cortes, barbas, tintes con precios configurables
-- **Productos y consumibles**: Control de stock, ventas rápidas
-- **Cierre de caja**: Resumen diario, diferencias, retiros
-- **Reportes**: Ganancias por período, cortes por barbero, productos más vendidos
-- **PWA**: Instalable en celular, funciona offline, sincronización automática
+- **Barber management**: Haircut tracking, profit percentages, history
+- **Service catalog**: Haircuts, beard trims, dyes with configurable prices
+- **Products & consumables**: Stock control, quick sales
+- **Cash register closing**: Daily summary, differences, withdrawals
+- **Reports**: Earnings by period, haircuts per barber, top-selling products
+- **PWA**: Installable on mobile, works offline, automatic sync
 
-## Capturas de Pantalla
+## Screenshots
 
-![Dashboard Admin](docs/screenshots/dashboard-admin.png)
-![Registro de Cortes](docs/screenshots/registro-cortes.png)
-![Dashboard Barbero](docs/screenshots/dashboard-barbero.png)
-![Reportes](docs/screenshots/reportes.png)
+![Admin Dashboard](docs/screenshots/dashboard-admin.png)
+![Haircut Registration](docs/screenshots/registro-cortes.png)
+![Barber Dashboard](docs/screenshots/dashboard-barbero.png)
+![Reports](docs/screenshots/reportes.png)
 
-## Requisitos Previos
+## Prerequisites
 
 - Python 3.11+
 - Node.js 18+
-- npm o pnpm
+- npm or pnpm
 
-## Instalación
+## Installation
 
-### 1. Clonar el repositorio
+### 1. Clone the repository
 ```bash
 git clone <repo-url>
-cd barberia
+cd barbershop-manager
 ```
 
 ### 2. Backend
@@ -46,25 +46,25 @@ cd frontend
 npm install
 ```
 
-## Configuración Inicial
+## Initial Setup
 
-### Crear usuario administrador
+### Create admin user
 ```bash
 cd backend
 python -m app.scripts.create_admin
 ```
 
-### Variables de entorno (backend/.env)
+### Environment variables (backend/.env)
 ```env
 DATABASE_URL=sqlite:///./barberia.db
-SECRET_KEY=tu-clave-secreta-muy-segura
+SECRET_KEY=your-very-secure-secret-key
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=480
 ```
 
-## Uso del Sistema
+## Usage
 
-### Desarrollo
+### Development
 ```bash
 # Terminal 1 - Backend
 cd backend
@@ -75,7 +75,7 @@ cd frontend
 npm run dev
 ```
 
-### Producción
+### Production
 ```bash
 # Backend
 cd backend
@@ -87,46 +87,46 @@ npm run build
 npm run preview
 ```
 
-## Roles y Permisos
+## Roles & Permissions
 
-### Administrador
-- Ver ganancias (diarias, semanales, mensuales)
-- Gestionar barberos y porcentajes
-- Configurar servicios y precios
-- Gestionar productos y stock
-- Registrar gastos
-- Realizar cierre de caja
-- Ver reportes y exportar datos
+### Admin
+- View earnings (daily, weekly, monthly)
+- Manage barbers and percentages
+- Configure services and prices
+- Manage products and stock
+- Register expenses
+- Perform cash register closing
+- View reports and export data
 
-### Barbero
-- Registrar sus propios cortes
-- Ver su plata acumulada (su parte correspondiente)
-- Ver su porcentaje asignado
-- NO ve información de otros barberos
-- NO ve ganancias globales
+### Barber
+- Register their own haircuts
+- View their accumulated earnings (their share)
+- View their assigned percentage
+- Does NOT see other barbers' information
+- Does NOT see global earnings
 
-## Scripts Disponibles
+## Available Scripts
 
 ### Backend
-| Script | Descripción |
+| Script | Description |
 |--------|-------------|
-| `uvicorn app.main:app --reload` | Servidor desarrollo |
-| `pytest tests/ -v` | Ejecutar tests |
-| `python -m app.scripts.create_admin` | Crear admin inicial |
+| `uvicorn app.main:app --reload` | Development server |
+| `pytest tests/ -v` | Run tests |
+| `python -m app.scripts.create_admin` | Create initial admin |
 
 ### Frontend
-| Script | Descripción |
+| Script | Description |
 |--------|-------------|
-| `npm run dev` | Servidor desarrollo |
-| `npm run build` | Build producción |
-| `npm run preview` | Preview producción |
+| `npm run dev` | Development server |
+| `npm run build` | Production build |
+| `npm run preview` | Production preview |
 
 ## API Documentation
 
-Una vez ejecutando el backend, visita:
+Once the backend is running, visit:
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
 
-## Licencia
+## License
 
-MIT License - Ver [LICENSE](LICENSE) para más detalles.
+MIT License - See [LICENSE](LICENSE) for details.
