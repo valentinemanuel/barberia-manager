@@ -1,5 +1,6 @@
 ---
 description: Valida la implementación de una spec contra spec.md, plan.md, constitution.md y tests.
+mode: subagent
 model: inherit
 tools:
   read: true

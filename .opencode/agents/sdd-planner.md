@@ -1,5 +1,6 @@
 ---
 description: Genera el plan.md de una spec SDD a partir de spec.md y la exploración del codebase.
+mode: subagent
 model: inherit
 tools:
   read: true

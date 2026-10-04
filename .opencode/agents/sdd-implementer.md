@@ -1,5 +1,6 @@
 ---
 description: Ejecuta las tareas de tasks.md de una spec SDD, una a la vez, con tests primero.
+mode: subagent
 model: inherit
 tools:
   read: true

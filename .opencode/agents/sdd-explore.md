@@ -1,5 +1,6 @@
 ---
 description: Investiga el codebase antes de crear una spec SDD. Localiza archivos relevantes, modelos, routers, patrones y dependencias.
+mode: subagent
 model: inherit
 tools:
   read: true
