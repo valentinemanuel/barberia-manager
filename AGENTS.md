@@ -78,8 +78,8 @@ pytest tests/ -v --cov=app
 ```
 
 ## Flujo de Trabajo con Git
-1. Crear rama desde `main`: `feat/nombre-funcionalidad`
-2. Commits en español con prefijos: `feat:`, `fix:`, `refactor:`, `docs:`
+1. Crear rama desde con la funcionalidad correspondiente: feature, fix, docs, style, refactor, chore, test (o lo correspondiente a la rama) `main`: `feat(o funcionalidad correspondiente)/nombre-funcionalidad`
+2. Commits en ingles con prefijos: `feat:`, `fix:`, `refactor:`, `docs:`
 3. PR con descripción clara y tests
 4. No hacer push directo a `main`
 
