@@ -30,6 +30,8 @@ app.dependency_overrides[get_db] = override_get_db
 @pytest.fixture(scope="function")
 def client():
     Base.metadata.create_all(bind=engine)
+    # Restaurar el override propio: otro archivo de tests pudo pisarlo al importarse
+    app.dependency_overrides[get_db] = override_get_db
     yield TestClient(app)
     Base.metadata.drop_all(bind=engine)
 
@@ -76,7 +78,8 @@ def test_crear_corte_calcula_porcentaje(client):
     )
     assert response.status_code == 201
     data = response.json()
-    assert data["parte_barbero"] == 50.00
-    assert data["parte_barberia"] == 50.00
+    # Los Decimal se serializan como string ("50.00")
+    assert float(data["parte_barbero"]) == 50.00
+    assert float(data["parte_barberia"]) == 50.00
 
     db.close()

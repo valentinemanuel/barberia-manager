@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import { mensajeError } from '../services/error'
 import { useAuthStore } from '../store/authStore'
 
 export default function Login() {
@@ -17,11 +18,7 @@ export default function Login() {
     setCargando(true)
 
     try {
-      const formData = new FormData()
-      formData.append('username', usuario)
-      formData.append('password', password)
-
-      const response = await api.post('/auth/login', formData)
+      const response = await api.post('/auth/login/json', { usuario, password })
       const { access_token } = response.data
 
       // Obtener perfil del usuario
@@ -32,7 +29,7 @@ export default function Login() {
       setAuth(access_token, perfilResponse.data)
       navigate('/')
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Error al iniciar sesión')
+      setError(mensajeError(err, 'Error al iniciar sesión'))
     } finally {
       setCargando(false)
     }
