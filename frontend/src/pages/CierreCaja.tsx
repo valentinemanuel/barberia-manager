@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import api from '../services/api'
+import { mensajeError } from '../services/error'
 
 interface ResumenDia {
   fecha: string
@@ -58,7 +59,7 @@ export default function CierreCaja() {
       setTotalEnCaja('')
       setMontoRetirado('')
     } catch (error: any) {
-      setMensaje(error.response?.data?.detail || 'Error al realizar cierre')
+      setMensaje(mensajeError(error, 'Error al realizar cierre'))
     } finally {
       setCargando(false)
     }

@@ -17,7 +17,14 @@ api.interceptors.request.use((config) => {
 })
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Los Decimal de Pydantic llegan como strings ("12.50"); convertirlos a
+    // número para que .toFixed() funcione y React no truene (pantalla en blanco)
+    if (response.data && typeof response.data === 'object') {
+      response.data = convertirDecimales(response.data)
+    }
+    return response
+  },
   (error) => {
     if (error.response?.status === 401) {
       useAuthStore.getState().logout()
@@ -26,5 +33,20 @@ api.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+function convertirDecimales(valor: unknown): unknown {
+  if (typeof valor === 'string') {
+    return /^-?\d+(\.\d+)?$/.test(valor) ? Number(valor) : valor
+  }
+  if (Array.isArray(valor)) {
+    return valor.map(convertirDecimales)
+  }
+  if (typeof valor === 'object' && valor !== null) {
+    return Object.fromEntries(
+      Object.entries(valor).map(([clave, v]) => [clave, convertirDecimales(v)])
+    )
+  }
+  return valor
+}
 
 export default api

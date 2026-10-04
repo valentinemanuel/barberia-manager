@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import api from '../services/api'
+import { mensajeError } from '../services/error'
 import { useAuthStore } from '../store/authStore'
 import { db } from '../services/db'
 
@@ -53,7 +54,7 @@ export default function RegistroCortes() {
       setMensaje('✓ Corte registrado exitosamente')
       setServicioSeleccionado('')
     } catch (error: any) {
-      setMensaje(error.response?.data?.detail || 'Error al registrar corte')
+      setMensaje(mensajeError(error, 'Error al registrar corte'))
     } finally {
       setCargando(false)
     }
@@ -112,7 +113,7 @@ export default function RegistroCortes() {
             <p className="text-2xl font-bold text-[var(--color-success)]">
               ${(
                 servicios.find((s) => s.id === servicioSeleccionado)!.precio *
-                (usuario?.porcentaje_ganancia / 100)
+                ((usuario?.porcentaje_ganancia ?? 0) / 100)
               ).toFixed(2)}
             </p>
           </div>

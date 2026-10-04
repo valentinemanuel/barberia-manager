@@ -63,3 +63,6 @@ coverage/
 # Alembic (future migrations)
 alembic/versions/*.py
 !alembic/versions/.gitkeep
+
+# MCP config local (contiene tokens)
+opencode.json

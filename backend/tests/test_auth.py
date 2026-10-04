@@ -29,6 +29,8 @@ app.dependency_overrides[get_db] = override_get_db
 @pytest.fixture(scope="function")
 def client():
     Base.metadata.create_all(bind=engine)
+    # Restaurar el override propio: otro archivo de tests pudo pisarlo al importarse
+    app.dependency_overrides[get_db] = override_get_db
     yield TestClient(app)
     Base.metadata.drop_all(bind=engine)
 

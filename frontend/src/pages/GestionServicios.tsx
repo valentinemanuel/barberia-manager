@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import api from '../services/api'
+import { mensajeError } from '../services/error'
 
 interface Servicio {
   id: number
@@ -66,7 +67,7 @@ export default function GestionServicios() {
       setModalAbierto(false)
       cargarServicios()
     } catch (error: any) {
-      alert(error.response?.data?.detail || 'Error al guardar')
+      alert(mensajeError(error, 'Error al guardar'))
     }
   }
 
