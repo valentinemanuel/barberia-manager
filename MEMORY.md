@@ -2,6 +2,7 @@
 
 ## Resumen Ejecutivo
 Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Permite registrar cortes, gestionar barberos con porcentajes, productos, consumibles, gastos y reportes. Funciona offline con sincronización.
+- **Repo**: `valentinemanuel/barbershop-manager` (renombrado de `barberia-manager`, oct 2026)
 
 ## Decisiones Arquitectónicas
 - **Backend**: FastAPI + SQLAlchemy 2.0 + SQLite (migrable a PostgreSQL)
