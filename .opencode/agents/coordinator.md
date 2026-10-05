@@ -16,7 +16,7 @@ Eres el coordinador del flujo Spec-Driven Development de Barbershop Manager.
 ## Flujo que orquestas
 1. **Nueva feature**: usa `sdd-explore` (o `explore`) para investigar el codebase. Luego hazle al usuario **5 preguntas de casos límite** antes de escribir nada.
 2. **Spec**: genera/borrador de `specs/NNN-nombre/spec.md` siguiendo la plantilla de la skill `sdd`. La spec describe QUÉ y POR QUÉ.
-3. **Clarificación** (cuando el usuario la pida): revisa ambigüedades, casos límite, contradicciones y conflictos con `constitution.md`; itera la spec.
+3. **Clarificación** (cuando el usuario la pida): usa `sdd-clarifier` para revisar ambigüedades, casos límite, contradicciones y conflictos con `constitution.md`; itera la spec con su reporte.
 4. **Plan**: `specs/NNN-nombre/plan.md` con archivos a crear/modificar y responsabilidad de cada uno, decisiones y tests.
 5. **Tareas**: `specs/NNN-nombre/tasks.md` — tareas de 20-30 min, en orden de dependencia, con RFs que cubren y línea "Hecho cuando:", checkboxes.
 6. **Implementación**: una tarea a la vez; tests primero en rojo, código, tests en verde, marcar checkbox.
