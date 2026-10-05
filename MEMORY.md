@@ -12,6 +12,7 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 - **Monedas**: Decimal en backend, cents (enteros) en frontend
 - **Fechas**: UTC en backend, local en frontend; strings solo-fecha (`YYYY-MM-DD`) se parsean como fecha LOCAL (nunca como UTC, retrocedería un día)
 - **Diseño frontend (spec 001)**: sistema propio "Tinta & hueso" — tokens CSS + kit `components/ui`, sin frameworks CSS; Archivo Variable self-hosted, iconos `lucide-react`
+- **Herramientas MCP**: plantilla sin credenciales en `opencode.json.example` y guía en `docs/mcp.md`; Playwright para navegador, Context7 para documentación, SQLite y GitHub opcionales. No confundir configuración con conexión verificada.
 
 ## Estado Actual
 - [x] Estructura del proyecto
@@ -29,7 +30,7 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 - [ ] Tests (backend con pytest; frontend solo tests visuales/E2E Playwright en `frontend/tests/visuales/`)
 
 ## Pendientes Importantes
-1. Spec 000 (roles y permisos) sin merge: rama `feat/spec-000-roles-permisos`; spec 001 va apilada encima (`feat/frontend-design-system`)
+1. Specs 000 y 001 ya integradas mediante PR #6 y #7, presentes en `dev` y `main` (comprobado el 2026-10-05). La corrección del login (PR #10) también está en `main`, integrada mediante la release del PR #11.
 2. Duda abierta spec 001: locale del formato de moneda (`$1,234.56` en-US vs `$1.234,56` es-AR)
 3. `lucide-react`/`@fontsource-variable/archivo` quedaron dentro del commit de spec 000 (11ba0c9); moverlos al commit de spec 001 si se reordena el historial
 4. Tests de integración backend
@@ -41,3 +42,8 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 - SQLite en desarrollo, PostgreSQL en producción
 - IndexedDB: los booleanos NO son claves válidas → `where('sincronizado').equals(0)` devuelve siempre `[]`; usar `.filter()` en memoria (fix en `useSync.ts`, verificado 0 vs 1)
 - Git flow: ramas de trabajo desde `dev` → PR a `dev`; `dev` → `main` por release
+
+## Recuperación documental (2026-10-05)
+- Recuperado el contenido útil de `b211ee5` en una rama nueva desde `dev`, sin cherry-pick ni reescritura de la rama histórica `feat/mcp-config-y-offline`.
+- Conservados el estado y los pendientes actuales; no se recupera la afirmación antigua de que todos los tests están completos.
+- Plantilla MCP adaptada a la documentación de OpenCode V2 (`mcp.servers`, `disabled`, credenciales por entorno). La configuración local existente no se modifica. La conexión de los servidores de la plantilla queda por verificar en cada entorno.
