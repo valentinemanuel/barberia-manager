@@ -1,4 +1,5 @@
-import { ReactNode, useState } from 'react'
+import { useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -36,20 +37,24 @@ export default function Layout({ children }: LayoutProps) {
   const location = useLocation()
   const [menuMovilAbierto, setMenuMovilAbierto] = useState(false)
 
-  const enlaces: Enlace[] = [
-    { ruta: '/', nombre: 'Inicio', icono: <LayoutDashboard size={18} /> },
-    { ruta: '/cortes', nombre: 'Cortes', icono: <Scissors size={18} /> },
-  ]
+  const enlaces: Enlace[] = useMemo(() => {
+    const base: Enlace[] = [
+      { ruta: '/', nombre: 'Inicio', icono: <LayoutDashboard size={18} /> },
+      { ruta: '/cortes', nombre: 'Cortes', icono: <Scissors size={18} /> },
+    ]
 
-  if (usuario?.rol === 'admin') {
-    enlaces.push(
-      { ruta: '/usuarios', nombre: 'Usuarios', icono: <Users size={18} /> },
-      { ruta: '/servicios', nombre: 'Servicios', icono: <ClipboardList size={18} /> },
-      { ruta: '/productos', nombre: 'Productos', icono: <Package size={18} /> },
-      { ruta: '/reportes', nombre: 'Reportes', icono: <BarChart3 size={18} /> },
-      { ruta: '/cierre-caja', nombre: 'Cierre de caja', icono: <Wallet size={18} /> }
-    )
-  }
+    if (usuario?.rol === 'admin') {
+      base.push(
+        { ruta: '/usuarios', nombre: 'Usuarios', icono: <Users size={18} /> },
+        { ruta: '/servicios', nombre: 'Servicios', icono: <ClipboardList size={18} /> },
+        { ruta: '/productos', nombre: 'Productos', icono: <Package size={18} /> },
+        { ruta: '/reportes', nombre: 'Reportes', icono: <BarChart3 size={18} /> },
+        { ruta: '/cierre-caja', nombre: 'Cierre de caja', icono: <Wallet size={18} /> }
+      )
+    }
+
+    return base
+  }, [usuario?.rol])
 
   // En pantallas angostas la barra inferior solo admite un puñado de pestañas;
   // el resto (incluida la ruta activa actual) vive en la hoja "Más".

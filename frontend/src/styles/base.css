@@ -207,10 +207,13 @@ svg {
   to { opacity: 1; }
 }
 
-/* La franja del poste barbero: solo se mueve si el usuario no pide quietud */
+/* La franja del poste barbero: el elemento se traslada verticalmente una
+   distancia igual al periodo vertical del patrón (64px * sqrt(2) ≈ 90.51px),
+   por lo que el bucle es perfecto y sin saltos. Solo se mueve si el usuario
+   no pide quietud (ver media query de movimiento reducido). */
 @keyframes franja-desliza {
-  from { background-position: 0 0; }
-  to { background-position: 0 -36px; }
+  from { transform: translateY(0); }
+  to { transform: translateY(90.51px); }
 }
 
 /* --- Accesibilidad: respetar preferencia de movimiento reducido ------------ */
