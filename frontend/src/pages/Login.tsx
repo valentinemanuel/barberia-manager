@@ -1,14 +1,18 @@
 import { useState } from 'react'
+import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Scissors } from 'lucide-react'
 import api from '../services/api'
 import { mensajeError } from '../services/error'
 import { useAuthStore } from '../store/authStore'
-import { Boton, Campo } from '../components/ui'
+import Boton from '../components/ui/Boton'
+import Campo from '../components/ui/Campo'
 
 /**
  * Pantalla de acceso. El momento de marca es la franja del poste barbero
  * a la izquierda: se desplaza en bucle suave (quieto con movimiento reducido).
+ * La caja del formulario entra sin animación para no competir con el poste:
+ * un solo movimiento orquestado por pantalla.
  */
 export default function Login() {
   const [usuario, setUsuario] = useState('')
@@ -18,7 +22,7 @@ export default function Login() {
   const { setAuth } = useAuthStore()
   const navigate = useNavigate()
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setError('')
     setCargando(true)
@@ -49,7 +53,7 @@ export default function Login() {
       </div>
 
       <div className="login__panel">
-        <div className="login__caja animar-pagina">
+        <div className="login__caja">
           <span className="login__icono">
             <Scissors size={22} aria-hidden="true" />
           </span>

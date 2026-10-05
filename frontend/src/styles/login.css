@@ -13,23 +13,31 @@
 .login__poste {
   display: none;
   flex: 0 0 96px;
+  position: relative;
   background: var(--tinta);
   overflow: hidden;
+  border-right: 1px solid rgba(23, 25, 28, 0.4);
 }
 
 .login__poste-franja {
-  width: 100%;
-  height: calc(100% + 72px);
-  margin-top: -36px;
+  position: absolute;
+  inset: 0;
+  /* Altura extra = un periodo vertical completo, para que el translateY
+     del keyframe nunca deje huecos arriba/abajo durante el bucle. */
+  top: -91px;
+  bottom: -91px;
+  /* Periodo del patrón: 4 bandas de 16px = 64px sobre el eje del gradiente.
+     Sin background-size: el repeating-linear-gradient ya repite solo y
+     ponerle tamaño de baldosa cortaba las franjas (triángulos en el borde). */
   background: repeating-linear-gradient(
     -45deg,
-    var(--franja) 0 26px,
-    var(--texto-invertido) 26px 52px,
-    var(--info) 52px 78px,
-    var(--texto-invertido) 78px 104px
+    var(--franja) 0 16px,
+    var(--texto-invertido) 16px 32px,
+    var(--info) 32px 48px,
+    var(--texto-invertido) 48px 64px
   );
-  background-size: 100% 72px;
-  animation: franja-desliza 3.2s linear infinite;
+  animation: franja-desliza 2.8s linear infinite;
+  will-change: transform;
 }
 
 .login__panel {
