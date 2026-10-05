@@ -60,6 +60,9 @@ yarn-error.log*
 coverage/
 .nyc_output/
 
+# Capturas generadas por los tests visuales (frontend/tests/visuales)
+frontend/tests/visuales/capturas/
+
 # Alembic (future migrations)
 alembic/versions/*.py
 !alembic/versions/.gitkeep

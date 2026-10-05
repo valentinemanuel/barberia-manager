@@ -1,0 +1,96 @@
+/* ==========================================================================
+   Tokens del sistema de diseño — Tinta & hueso
+   Paleta única para todo el proyecto. No usar colores fuera de esta lista.
+   ========================================================================== */
+
+:root {
+  /* --- Paleta base ------------------------------------------------------ */
+  --hueso: #f5f2ec;        /* fondo de papel cálido */
+  --carta: #ffffff;        /* tarjetas y superficies elevadas */
+  --tinta: #17191c;        /* texto principal, shell y botones primarios */
+  --laton: #b98a2f;        /* acento cálido: detalles, foco secundario */
+  --franja: #d64545;       /* rojo del poste: SOLO nav activo y marca */
+
+  /* --- Texto ------------------------------------------------------------ */
+  --texto: #17191c;
+  --texto-suave: #5c6168;  /* AA sobre hueso y carta */
+  --texto-invertido: #f5f2ec;
+
+  /* --- Superficies y bordes --------------------------------------------- */
+  --fondo: var(--hueso);
+  --superficie: var(--carta);
+  --borde: #e4ded2;
+  --borde-fuerte: #cfc7b8;
+  --overlay: rgba(23, 25, 28, 0.55);
+
+  /* --- Shell (rail/topbar) ---------------------------------------------- */
+  --shell-fondo: var(--tinta);
+  --shell-texto: #e8e4db;
+  --shell-texto-suave: #9a958a;
+  --shell-hover: rgba(245, 242, 236, 0.08);
+  --shell-activo: rgba(245, 242, 236, 0.12);
+
+  /* --- Semánticos -------------------------------------------------------- */
+  --exito: #1c7c4c;
+  --exito-fondo: #e3f2e9;
+  --alerta: #a46a08;
+  --alerta-fondo: #fbf0da;
+  --peligro: #b3261e;
+  --peligro-fondo: #fbe9e7;
+  --info: #1d5fa8;
+  --info-fondo: #e5eefa;
+
+  /* --- Tipografía -------------------------------------------------------- */
+  --fuente: 'Archivo Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    Roboto, sans-serif;
+
+  --fs-xs: 0.75rem;    /* 12px — metadatos */
+  --fs-sm: 0.8125rem;  /* 13px — etiquetas */
+  --fs-base: 0.9375rem;/* 15px — cuerpo */
+  --fs-md: 1.0625rem;  /* 17px — énfasis */
+  --fs-lg: 1.375rem;   /* 22px — títulos de sección */
+  --fs-xl: 1.75rem;    /* 28px — títulos de página */
+  --fs-2xl: 2.5rem;    /* 40px — cifras destacadas */
+  --fs-3xl: 3.25rem;   /* 52px — cifra principal del ledger */
+
+  --peso-normal: 400;
+  --peso-medio: 500;
+  --peso-semi: 600;
+  --peso-alto: 700;
+  --peso-negro: 800;
+
+  --interlineado: 1.5;
+
+  /* --- Espaciado (base 4px) ---------------------------------------------- */
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.5rem;
+  --sp-6: 2rem;
+  --sp-7: 3rem;
+
+  /* --- Radios ------------------------------------------------------------- */
+  --radio-sm: 6px;
+  --radio: 10px;
+  --radio-lg: 14px;
+  --radio-pill: 999px;
+
+  /* --- Sombras (discretas) ------------------------------------------------ */
+  --sombra-1: 0 1px 2px rgba(23, 25, 28, 0.06);
+  --sombra-2: 0 4px 16px -4px rgba(23, 25, 28, 0.12);
+  --sombra-3: 0 16px 48px -12px rgba(23, 25, 28, 0.28);
+
+  /* --- Movimiento --------------------------------------------------------- */
+  --dur-rapida: 140ms;
+  --dur-normal: 220ms;
+  --dur-lenta: 360ms;
+  --curva-salida: cubic-bezier(0.2, 0, 0, 1);
+  --curva-entrada: cubic-bezier(0, 0, 0.2, 1);
+
+  /* --- Layout ------------------------------------------------------------- */
+  --rail-ancho: 232px;
+  --topbar-alto: 56px;
+  --tabbar-alto: 60px;
+  --contenido-max: 1120px;
+}

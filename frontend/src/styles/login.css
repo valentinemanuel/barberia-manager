@@ -1,0 +1,82 @@
+/* ==========================================================================
+   Pantalla de acceso — Login
+   ========================================================================== */
+
+.login {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  background: var(--fondo);
+}
+
+/* Poste barbero a la izquierda (solo pantallas medianas en adelante) */
+.login__poste {
+  display: none;
+  flex: 0 0 96px;
+  background: var(--tinta);
+  overflow: hidden;
+}
+
+.login__poste-franja {
+  width: 100%;
+  height: calc(100% + 72px);
+  margin-top: -36px;
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--franja) 0 26px,
+    var(--texto-invertido) 26px 52px,
+    var(--info) 52px 78px,
+    var(--texto-invertido) 78px 104px
+  );
+  background-size: 100% 72px;
+  animation: franja-desliza 3.2s linear infinite;
+}
+
+.login__panel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-5);
+}
+
+.login__caja {
+  width: 100%;
+  max-width: 380px;
+}
+
+.login__icono {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radio);
+  background: var(--tinta);
+  color: var(--texto-invertido);
+}
+
+.login__titulo {
+  margin-top: var(--sp-4);
+  font-size: var(--fs-2xl);
+  font-weight: var(--peso-negro);
+  letter-spacing: -0.03em;
+}
+
+.login__subtitulo {
+  color: var(--texto-suave);
+  font-size: var(--fs-base);
+}
+
+.login__formulario {
+  margin-top: var(--sp-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+@media (min-width: 768px) {
+  .login__poste {
+    display: block;
+  }
+}

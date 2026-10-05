@@ -1,0 +1,225 @@
+/* ==========================================================================
+   Base: reset, tipografía, foco, utilidades de layout y animaciones
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--fuente);
+  font-size: var(--fs-base);
+  line-height: var(--interlineado);
+  color: var(--texto);
+  background: var(--fondo);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  line-height: 1.2;
+  font-weight: var(--peso-alto);
+  letter-spacing: -0.01em;
+}
+
+h1 { font-size: var(--fs-xl); }
+h2 { font-size: var(--fs-lg); }
+h3 { font-size: var(--fs-md); }
+
+p { margin: 0; }
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+/* Foco visible y consistente en todo el teclado */
+:focus-visible {
+  outline: 2px solid var(--laton);
+  outline-offset: 2px;
+  border-radius: var(--radio-sm);
+}
+
+/* Selección acorde a la paleta */
+::selection {
+  background: var(--laton);
+  color: var(--texto-invertido);
+}
+
+/* --- Utilidades de layout ------------------------------------------------- */
+
+.contenedor {
+  width: 100%;
+  max-width: var(--contenido-max);
+  margin: 0 auto;
+  padding: var(--sp-5);
+}
+
+.pagina {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.pagina__cabecera {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+}
+
+.pagina__descripcion {
+  color: var(--texto-suave);
+  font-size: var(--fs-base);
+  margin-top: var(--sp-1);
+}
+
+.fila {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.fila--entre {
+  justify-content: space-between;
+}
+
+.fila--envolver {
+  flex-wrap: wrap;
+}
+
+.rejilla {
+  display: grid;
+  gap: var(--sp-4);
+}
+
+.rejilla--2 { grid-template-columns: repeat(2, 1fr); }
+.rejilla--3 { grid-template-columns: repeat(3, 1fr); }
+.rejilla--4 { grid-template-columns: repeat(4, 1fr); }
+
+@media (max-width: 900px) {
+  .rejilla--3,
+  .rejilla--4 { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 600px) {
+  .contenedor { padding: var(--sp-4); }
+  .rejilla--2,
+  .rejilla--3,
+  .rejilla--4 { grid-template-columns: 1fr; }
+}
+
+/* Cifras alineadas en columna (dinero, conteos) */
+.cifra {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+  letter-spacing: -0.02em;
+}
+
+/* Visible solo para lectores de pantalla */
+.ui-sr-oculto {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.texto-suave { color: var(--texto-suave); }
+.texto-exito { color: var(--exito); }
+.texto-peligro { color: var(--peligro); }
+.texto-alerta { color: var(--alerta); }
+
+.texto-pequeno { font-size: var(--fs-sm); }
+.texto-centrado { text-align: center; }
+
+/* --- Animaciones ----------------------------------------------------------- */
+
+/* Entrada de pantalla al cambiar de ruta: responde a la acción del usuario */
+@keyframes pagina-entra {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animar-pagina {
+  /* fill-mode `backwards` y NO `both`: con `both` el `transform: translateY(0)`
+     persiste tras la animación, y cualquier transform (aunque sea identidad)
+     crea un bloque contenedor que rompe el `position: fixed` de modales y
+     toasts dentro de la página (el overlay dejaba de cubrir toda la pantalla). */
+  animation: pagina-entra var(--dur-normal) var(--curva-entrada) backwards;
+}
+
+/* Pulso del skeleton mientras carga */
+@keyframes skeleton-pulso {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+/* Entrada de toasts y modales */
+@keyframes surgir {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes overlay-entra {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* La franja del poste barbero: solo se mueve si el usuario no pide quietud */
+@keyframes franja-desliza {
+  from { background-position: 0 0; }
+  to { background-position: 0 -36px; }
+}
+
+/* --- Accesibilidad: respetar preferencia de movimiento reducido ------------ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,18 +1,27 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { Scissors } from 'lucide-react'
 import api from '../services/api'
 import { useAuthStore } from '../store/authStore'
+import { Tarjeta, Cifra, SkeletonLineas } from '../components/ui'
+import { formatearMoneda, formatearEntero, formatearFecha, pluralizar } from '../utils/formato'
 
 interface Resumen {
+  fecha?: string
   total_cortes: number
   acumulado: number
   porcentaje_asignado: number
 }
 
+/**
+ * Vista del barbero: su día, su semana, su mes y su porcentaje.
+ * Nunca muestra totales brutos de la barbería ni datos de otros barberos.
+ */
 export default function DashboardBarbero() {
   const { usuario } = useAuthStore()
-  const [resumenDia, setResumenDia] = useState<Resumen | null>(null)
-  const [resumenSemana, setResumenSemana] = useState<Resumen | null>(null)
-  const [resumenMes, setResumenMes] = useState<Resumen | null>(null)
+  const [dia, setDia] = useState<Resumen | null>(null)
+  const [semana, setSemana] = useState<Resumen | null>(null)
+  const [mes, setMes] = useState<Resumen | null>(null)
   const [cargando, setCargando] = useState(true)
 
   useEffect(() => {
@@ -21,14 +30,14 @@ export default function DashboardBarbero() {
 
   const cargarResumenes = async () => {
     try {
-      const [dia, semana, mes] = await Promise.all([
+      const [rDia, rSemana, rMes] = await Promise.all([
         api.get('/cortes/mi/resumen/dia'),
         api.get('/cortes/mi/resumen/semana'),
         api.get('/cortes/mi/resumen/mes'),
       ])
-      setResumenDia(dia.data)
-      setResumenSemana(semana.data)
-      setResumenMes(mes.data)
+      setDia(rDia.data)
+      setSemana(rSemana.data)
+      setMes(rMes.data)
     } catch (error) {
       console.error('Error cargando resúmenes:', error)
     } finally {
@@ -37,70 +46,79 @@ export default function DashboardBarbero() {
   }
 
   if (cargando) {
-    return <div className="text-center p-8">Cargando...</div>
-  }
-
-  return (
-    <div>
-      <h2 className="text-2xl font-bold mb-4">
-        ¡Hola, {usuario?.nombre}! 👋
-      </h2>
-
-      <div className="grid grid-3">
-        {/* Hoy */}
-        <div className="card">
-          <h3 className="text-lg font-semibold mb-2 text-[var(--color-text-muted)]">
-            Hoy
-          </h3>
-          <p className="text-3xl font-bold text-[var(--color-highlight)]">
-            {resumenDia?.total_cortes || 0}
-          </p>
-          <p className="text-sm text-[var(--color-text-muted)]">cortes</p>
-          <p className="text-2xl font-bold text-[var(--color-success)] mt-2">
-            ${resumenDia?.acumulado?.toFixed(2) || '0.00'}
-          </p>
-          <p className="text-sm text-[var(--color-text-muted)]">acumulado</p>
-        </div>
-
-        {/* Semana */}
-        <div className="card">
-          <h3 className="text-lg font-semibold mb-2 text-[var(--color-text-muted)]">
-            Esta Semana
-          </h3>
-          <p className="text-3xl font-bold text-[var(--color-highlight)]">
-            {resumenSemana?.total_cortes || 0}
-          </p>
-          <p className="text-sm text-[var(--color-text-muted)]">cortes</p>
-          <p className="text-2xl font-bold text-[var(--color-success)] mt-2">
-            ${resumenSemana?.acumulado?.toFixed(2) || '0.00'}
-          </p>
-          <p className="text-sm text-[var(--color-text-muted)]">acumulado</p>
-        </div>
-
-        {/* Mes */}
-        <div className="card">
-          <h3 className="text-lg font-semibold mb-2 text-[var(--color-text-muted)]">
-            Este Mes
-          </h3>
-          <p className="text-3xl font-bold text-[var(--color-highlight)]">
-            {resumenMes?.total_cortes || 0}
-          </p>
-          <p className="text-sm text-[var(--color-text-muted)]">cortes</p>
-          <p className="text-2xl font-bold text-[var(--color-success)] mt-2">
-            ${resumenMes?.acumulado?.toFixed(2) || '0.00'}
-          </p>
-          <p className="text-sm text-[var(--color-text-muted)]">acumulado</p>
+    return (
+      <div className="contenedor">
+        <div className="pagina">
+          <div className="ui-tarjeta">
+            <SkeletonLineas cantidad={4} />
+          </div>
         </div>
       </div>
+    )
+  }
 
-      <div className="card mt-4">
-        <h3 className="text-lg font-semibold mb-2">Tu Porcentaje</h3>
-        <p className="text-4xl font-bold text-[var(--color-highlight)]">
-          {usuario?.porcentaje_ganancia}%
-        </p>
-        <p className="text-sm text-[var(--color-text-muted)]">
-          de cada corte registrado
-        </p>
+  const fechaHoy = dia?.fecha ? formatearFecha(dia.fecha) : ''
+
+  return (
+    <div className="contenedor">
+      <div className="pagina">
+        <header className="pagina__cabecera">
+          <div>
+            <h1>Hola, {usuario?.nombre}</h1>
+            <p className="pagina__descripcion">{fechaHoy}</p>
+          </div>
+        </header>
+
+        {/* La acción principal de la jornada, siempre a mano */}
+        <div className="dashboard__cta">
+          <Link to="/cortes" className="ui-boton ui-boton--primario">
+            <Scissors size={16} aria-hidden="true" />
+            Registrar corte
+          </Link>
+          <span className="texto-suave texto-pequeno">
+            Tu parte de cada corte se acredita al instante.
+          </span>
+        </div>
+
+        <div className="rejilla rejilla--3">
+          <Tarjeta>
+            <Cifra
+              etiqueta="Hoy"
+              valor={formatearEntero(dia?.total_cortes ?? 0)}
+              pie={`${pluralizar(dia?.total_cortes ?? 0, 'corte', 'cortes')} · ${formatearMoneda(dia?.acumulado ?? 0)} para vos`}
+              destacada
+            />
+          </Tarjeta>
+
+          <Tarjeta>
+            <Cifra
+              etiqueta="Esta semana"
+              valor={formatearEntero(semana?.total_cortes ?? 0)}
+              pie={`${pluralizar(semana?.total_cortes ?? 0, 'corte', 'cortes')} · ${formatearMoneda(semana?.acumulado ?? 0)} para vos`}
+              destacada
+            />
+          </Tarjeta>
+
+          <Tarjeta>
+            <Cifra
+              etiqueta="Este mes"
+              valor={formatearEntero(mes?.total_cortes ?? 0)}
+              pie={`${pluralizar(mes?.total_cortes ?? 0, 'corte', 'cortes')} · ${formatearMoneda(mes?.acumulado ?? 0)} para vos`}
+              destacada
+            />
+          </Tarjeta>
+        </div>
+
+        <Tarjeta titulo="Tu porcentaje">
+          <div className="dashboard__porcentaje">
+            <span className="dashboard__porcentaje-valor">
+              {usuario?.porcentaje_ganancia}%
+            </span>
+            <span className="texto-suave">
+              de cada servicio facturado corresponde a tu parte.
+            </span>
+          </div>
+        </Tarjeta>
       </div>
     </div>
   )

@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react'
 import api from '../services/api'
 import { mensajeError } from '../services/error'
+import {
+  Boton,
+  Tarjeta,
+  Campo,
+  Cifra,
+  SkeletonLineas,
+  useToast,
+} from '../components/ui'
+import { formatearMoneda, formatearFecha, pluralizar } from '../utils/formato'
 
 interface ResumenDia {
   fecha: string
@@ -14,11 +23,12 @@ interface ResumenDia {
 }
 
 export default function CierreCaja() {
+  const { mostrar } = useToast()
   const [resumen, setResumen] = useState<ResumenDia | null>(null)
+  const [cargando, setCargando] = useState(true)
   const [totalEnCaja, setTotalEnCaja] = useState('')
   const [montoRetirado, setMontoRetirado] = useState('')
-  const [cargando, setCargando] = useState(false)
-  const [mensaje, setMensaje] = useState('')
+  const [guardando, setGuardando] = useState(false)
 
   useEffect(() => {
     cargarResumen()
@@ -30,20 +40,33 @@ export default function CierreCaja() {
       setResumen(response.data)
     } catch (error) {
       console.error('Error cargando resumen:', error)
+      mostrar('error', 'No se pudo cargar el resumen del día')
+    } finally {
+      setCargando(false)
     }
   }
 
   const diferencia = resumen
-    ? (parseFloat(totalEnCaja) || 0) - (parseFloat(montoRetirado) || 0) - resumen.total_ingresos
+    ? (parseFloat(totalEnCaja) || 0) -
+      (parseFloat(montoRetirado) || 0) -
+      resumen.total_ingresos
     : 0
 
-  const handleCierre = async (e: React.FormEvent) => {
+  const hayMontos = totalEnCaja !== '' && montoRetirado !== ''
+
+  const claseDiferencia = !hayMontos
+    ? ''
+    : diferencia === 0
+    ? 'cierre__diferencia--cuadra'
+    : diferencia > 0
+    ? 'cierre__diferencia--sobra'
+    : 'cierre__diferencia--falta'
+
+  const manejarCierre = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!resumen) return
 
-    setCargando(true)
-    setMensaje('')
-
+    setGuardando(true)
     try {
       await api.post('/cierre-caja/', {
         fecha: resumen.fecha,
@@ -55,121 +78,151 @@ export default function CierreCaja() {
         total_en_caja: parseFloat(totalEnCaja),
         monto_retirado: parseFloat(montoRetirado),
       })
-      setMensaje('✓ Cierre de caja realizado exitosamente')
+      mostrar('exito', 'Cierre de caja realizado')
       setTotalEnCaja('')
       setMontoRetirado('')
-    } catch (error: any) {
-      setMensaje(mensajeError(error, 'Error al realizar cierre'))
+    } catch (error: unknown) {
+      mostrar('error', mensajeError(error, 'No se pudo realizar el cierre'))
     } finally {
-      setCargando(false)
+      setGuardando(false)
     }
   }
 
+  if (cargando) {
+    return (
+      <div className="contenedor">
+        <div className="pagina">
+          <div className="ui-tarjeta">
+            <SkeletonLineas cantidad={5} />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (!resumen) {
-    return <div className="text-center p-8">Cargando...</div>
+    return (
+      <div className="contenedor">
+        <div className="pagina">
+          <h1>Cierre de caja</h1>
+          <p className="texto-suave">
+            No se pudo cargar el resumen. Revisá la conexión y recargá la pantalla.
+          </p>
+          <div>
+            <Boton variante="secundario" onClick={cargarResumen}>
+              Reintentar
+            </Boton>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <h2 className="text-2xl font-bold mb-4">Cierre de Caja 💰</h2>
+    <div className="contenedor">
+      <div className="pagina">
+        <header className="pagina__cabecera">
+          <div>
+            <h1>Cierre de caja</h1>
+            <p className="pagina__descripcion">{formatearFecha(resumen.fecha)}</p>
+          </div>
+        </header>
 
-      <div className="card mb-4">
-        <h3 className="text-lg font-semibold mb-3">Resumen del Día</h3>
-        <div className="grid grid-2 gap-4">
-          <div>
-            <p className="text-sm text-[var(--color-text-muted)]">Total Cortes</p>
-            <p className="text-xl font-bold">${resumen.total_cortes.toFixed(2)}</p>
+        <Tarjeta titulo="Resumen del día">
+          <div className="cierre__resumen">
+            <Cifra
+              etiqueta="Cortes"
+              valor={formatearMoneda(resumen.total_cortes)}
+              pie={`${resumen.cantidad_cortes} ${pluralizar(resumen.cantidad_cortes, 'atendido', 'atendidos')}`}
+            />
+            <Cifra
+              etiqueta="Productos"
+              valor={formatearMoneda(resumen.total_productos)}
+            />
+            <Cifra
+              etiqueta="Consumibles"
+              valor={formatearMoneda(resumen.total_consumibles)}
+            />
+            <Cifra
+              etiqueta="Gastos"
+              valor={`-${formatearMoneda(resumen.total_gastos)}`}
+              className="texto-peligro"
+            />
           </div>
-          <div>
-            <p className="text-sm text-[var(--color-text-muted)]">Total Productos</p>
-            <p className="text-xl font-bold">${resumen.total_productos.toFixed(2)}</p>
+          <div style={{ marginTop: 'var(--sp-5)' }}>
+            <Cifra
+              etiqueta="En caja según registros"
+              valor={formatearMoneda(resumen.total_ingresos)}
+              destacada
+            />
           </div>
-          <div>
-            <p className="text-sm text-[var(--color-text-muted)]">Total Consumibles</p>
-            <p className="text-xl font-bold">${resumen.total_consumibles.toFixed(2)}</p>
-          </div>
-          <div>
-            <p className="text-sm text-[var(--color-text-muted)]">Total Gastos</p>
-            <p className="text-xl font-bold text-[var(--color-danger)]">
-              -${resumen.total_gastos.toFixed(2)}
-            </p>
-          </div>
-        </div>
-        <div className="mt-4 p-3 bg-green-50 rounded-lg">
-          <p className="text-sm text-[var(--color-text-muted)]">Total en Caja (según registros)</p>
-          <p className="text-2xl font-bold text-[var(--color-success)]">
-            ${resumen.total_ingresos.toFixed(2)}
-          </p>
-        </div>
+        </Tarjeta>
+
+        <form onSubmit={manejarCierre} className="pagina">
+          <Tarjeta titulo="Realizar cierre">
+            <div className="pagina">
+              <Campo
+                etiqueta="Total en caja (físico)"
+                id="cierre-total"
+                pista="Lo que hay en el cajón ahora mismo"
+              >
+                <input
+                  id="cierre-total"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="ui-campo__control"
+                  value={totalEnCaja}
+                  onChange={(e) => setTotalEnCaja(e.target.value)}
+                  required
+                  placeholder="0.00"
+                />
+              </Campo>
+
+              <Campo
+                etiqueta="Monto retirado"
+                id="cierre-retiro"
+                pista="Lo que sacás de la caja"
+              >
+                <input
+                  id="cierre-retiro"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  className="ui-campo__control"
+                  value={montoRetirado}
+                  onChange={(e) => setMontoRetirado(e.target.value)}
+                  required
+                  placeholder="0.00"
+                />
+              </Campo>
+
+              <div className={`cierre__diferencia ${claseDiferencia}`.trim()}>
+                <span className="ui-cifra__etiqueta">Diferencia</span>
+                <span className="ui-cifra__valor cifra">
+                  {hayMontos ? formatearMoneda(diferencia) : '—'}
+                </span>
+                {hayMontos && diferencia !== 0 && (
+                  <span className="cierre__diferencia-nota">
+                    {diferencia > 0
+                      ? 'Hay más dinero en caja que el registrado. Revisá si faltó cargar ventas.'
+                      : 'Hay menos dinero en caja que el registrado. Revisá si faltó cargar gastos.'}
+                  </span>
+                )}
+                {hayMontos && diferencia === 0 && (
+                  <span className="cierre__diferencia-nota">
+                    La caja cuadra con los registros.
+                  </span>
+                )}
+              </div>
+
+              <Boton type="submit" cargando={guardando} ancho>
+                Realizar cierre de caja
+              </Boton>
+            </div>
+          </Tarjeta>
+        </form>
       </div>
-
-      <form onSubmit={handleCierre} className="card">
-        <h3 className="text-lg font-semibold mb-3">Realizar Cierre</h3>
-
-        <div className="mb-4">
-          <label className="label">Total en Caja (Físico)</label>
-          <input
-            type="number"
-            step="0.01"
-            className="input"
-            value={totalEnCaja}
-            onChange={(e) => setTotalEnCaja(e.target.value)}
-            required
-            placeholder="0.00"
-          />
-        </div>
-
-        <div className="mb-4">
-          <label className="label">Monto Retirado</label>
-          <input
-            type="number"
-            step="0.01"
-            className="input"
-            value={montoRetirado}
-            onChange={(e) => setMontoRetirado(e.target.value)}
-            required
-            placeholder="0.00"
-          />
-        </div>
-
-        <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-          <p className="text-sm text-[var(--color-text-muted)]">Diferencia</p>
-          <p className={`text-2xl font-bold ${
-            diferencia === 0
-              ? 'text-[var(--color-success)]'
-              : diferencia > 0
-              ? 'text-[var(--color-warning)]'
-              : 'text-[var(--color-danger)]'
-          }`}>
-            ${diferencia.toFixed(2)}
-          </p>
-          {diferencia !== 0 && (
-            <p className="text-xs text-[var(--color-text-muted)]">
-              {diferencia > 0
-                ? 'Hay más dinero en caja de lo registrado'
-                : 'Hay menos dinero en caja de lo registrado'}
-            </p>
-          )}
-        </div>
-
-        {mensaje && (
-          <div className={`mb-4 p-3 rounded-lg text-sm ${
-            mensaje.startsWith('✓')
-              ? 'bg-green-50 text-green-600'
-              : 'bg-red-50 text-red-600'
-          }`}>
-            {mensaje}
-          </div>
-        )}
-
-        <button
-          type="submit"
-          className="btn btn-primary w-full"
-          disabled={cargando}
-        >
-          {cargando ? 'Procesando...' : 'Realizar Cierre de Caja'}
-        </button>
-      </form>
     </div>
   )
 }

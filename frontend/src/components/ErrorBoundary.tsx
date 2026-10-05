@@ -1,4 +1,5 @@
 import { Component, ReactNode } from 'react'
+import { Boton, Tarjeta } from './ui'
 
 interface Props {
   children: ReactNode
@@ -27,19 +28,26 @@ export default class ErrorBoundary extends Component<Props, Estado> {
   render() {
     if (this.estado.hayError) {
       return (
-        <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] p-4">
-          <div className="card w-full max-w-md text-center">
-            <h2 className="text-xl font-bold mb-2">Algo salió mal 😕</h2>
-            <p className="text-[var(--color-text-muted)] mb-4 break-words">
+        <div
+          className="login__panel"
+          style={{ minHeight: '100vh' }}
+        >
+          <Tarjeta className="login__caja">
+            <h1 style={{ fontSize: 'var(--fs-lg)' }}>Algo salió mal</h1>
+            <p className="texto-suave" style={{ margin: 'var(--sp-3) 0 var(--sp-5)' }}>
+              La pantalla encontró un error inesperado. Recargar suele resolverlo;
+              si vuelve a pasar, avisale al encargado.
+            </p>
+            <p
+              className="texto-pequeno texto-suave"
+              style={{ wordBreak: 'break-word', marginBottom: 'var(--sp-4)' }}
+            >
               {this.estado.mensaje}
             </p>
-            <button
-              className="btn btn-primary w-full"
-              onClick={() => window.location.reload()}
-            >
+            <Boton ancho onClick={() => window.location.reload()}>
               Recargar aplicación
-            </button>
-          </div>
+            </Boton>
+          </Tarjeta>
         </div>
       )
     }
