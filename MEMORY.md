@@ -40,3 +40,4 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 - Sincronización: last-write-wins con timestamp
 - SQLite en desarrollo, PostgreSQL en producción
 - IndexedDB: los booleanos NO son claves válidas → `where('sincronizado').equals(0)` devuelve siempre `[]`; usar `.filter()` en memoria (fix en `useSync.ts`, verificado 0 vs 1)
+- Git flow: ramas de trabajo desde `dev` → PR a `dev`; `dev` → `main` por release
