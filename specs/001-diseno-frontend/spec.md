@@ -1,6 +1,6 @@
 # Spec 001 — Sistema de diseño del frontend
 
-Estado: aprobada
+Estado: implementada
 
 ## Contexto y objetivo
 El frontend actual no tiene sistema de diseño: usa clases utilitarias de Tailwind que no existen
