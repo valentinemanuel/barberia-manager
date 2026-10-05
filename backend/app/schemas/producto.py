@@ -26,6 +26,8 @@ class ProductoActualizar(BaseModel):
 
 
 class ProductoResponse(ProductoBase):
+    # Solo expone precio_venta (precio) al usuario autenticado.
+    # No se incluyen costos ni márgenes.
     id: int
     activo: bool
     creado_en: datetime

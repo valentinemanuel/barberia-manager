@@ -6,6 +6,7 @@ from app.models.consumible import Consumible
 from app.models.gasto import Gasto
 from app.models.cierre_caja import CierreCaja
 from app.models.venta import Venta
+from app.models.auditoria import Auditoria, AccionAuditoria
 
 __all__ = [
     "Usuario",
@@ -16,4 +17,6 @@ __all__ = [
     "Gasto",
     "CierreCaja",
     "Venta",
+    "Auditoria",
+    "AccionAuditoria",
 ]

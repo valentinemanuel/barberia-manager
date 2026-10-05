@@ -52,9 +52,10 @@ def obtener_corte(
     corte = db.query(Corte).filter(Corte.id == corte_id).first()
     if not corte:
         raise HTTPException(status_code=404, detail="Corte no encontrado")
-    # Barberos solo pueden ver sus propios cortes
+    # Barberos solo pueden ver sus propios cortes; se devuelve 404
+    # para no revelar la existencia de cortes ajenos
     if usuario.rol == Rol.BARBERO and corte.barbero_id != usuario.id:
-        raise HTTPException(status_code=403, detail="Acceso denegado")
+        raise HTTPException(status_code=404, detail="Corte no encontrado")
     return corte
 
 

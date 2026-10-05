@@ -26,6 +26,8 @@ class ConsumibleActualizar(BaseModel):
 
 
 class ConsumibleResponse(ConsumibleBase):
+    # Solo expone precio_venta (precio) al usuario autenticado.
+    # No se incluyen costos ni márgenes.
     id: int
     activo: bool
     creado_en: datetime
