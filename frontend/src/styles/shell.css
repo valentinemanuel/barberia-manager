@@ -1,0 +1,272 @@
+/* ==========================================================================
+   Shell de la aplicación: topbar, rail lateral, barra inferior y pie de página
+   ========================================================================== */
+
+.shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--fondo);
+}
+
+/* --- Topbar ----------------------------------------------------------------- */
+.shell__topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  height: var(--topbar-alto);
+  padding: 0 var(--sp-4);
+  background: var(--shell-fondo);
+  color: var(--shell-texto);
+}
+
+.shell__marca {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-weight: var(--peso-negro);
+  font-size: var(--fs-md);
+  letter-spacing: -0.01em;
+  color: var(--texto-invertido);
+}
+
+/* La franja del poste: identidad de marca en un elemento pequeño */
+.shell__franja {
+  width: 14px;
+  height: 26px;
+  border-radius: 3px;
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--franja) 0 5px,
+    var(--texto-invertido) 5px 10px,
+    var(--info) 10px 15px,
+    var(--texto-invertido) 15px 20px
+  );
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.shell__topbar-derecha {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.shell__usuario {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.15;
+  min-width: 0;
+}
+
+.shell__usuario-nombre {
+  font-size: var(--fs-sm);
+  font-weight: var(--peso-semi);
+  color: var(--texto-invertido);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40vw;
+}
+
+.shell__usuario-rol {
+  font-size: var(--fs-xs);
+  color: var(--shell-texto-suave);
+  text-transform: lowercase;
+}
+
+/* Píldora de conexión: discreta, solo aparece cuando hay algo que decir */
+.shell__conexion {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radio-pill);
+  font-size: var(--fs-xs);
+  font-weight: var(--peso-semi);
+  white-space: nowrap;
+}
+
+.shell__conexion--offline {
+  background: var(--alerta);
+  color: #fff;
+}
+
+.shell__conexion--sincronizando {
+  background: rgba(245, 242, 236, 0.14);
+  color: var(--shell-texto);
+}
+
+.shell__conexion-gira {
+  animation: ui-boton-gira 0.9s linear infinite;
+}
+
+/* --- Cuerpo: rail + contenido ------------------------------------------------- */
+.shell__cuerpo {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.shell__rail {
+  display: none;
+  flex-direction: column;
+  gap: var(--sp-1);
+  width: var(--rail-ancho);
+  padding: var(--sp-4) var(--sp-3);
+  background: var(--shell-fondo);
+  border-top: 1px solid rgba(245, 242, 236, 0.08);
+}
+
+.shell__rail-enlace {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 0.625rem var(--sp-3);
+  border-radius: var(--radio);
+  font-size: var(--fs-base);
+  font-weight: var(--peso-medio);
+  color: var(--shell-texto-suave);
+  transition:
+    background-color var(--dur-rapida) var(--curva-salida),
+    color var(--dur-rapida) var(--curva-salida);
+}
+
+.shell__rail-enlace:hover {
+  background: var(--shell-hover);
+  color: var(--shell-texto);
+}
+
+/* Estado activo: marca con la franja del poste a la izquierda */
+.shell__rail-enlace[aria-current='page'] {
+  background: var(--shell-activo);
+  color: var(--texto-invertido);
+}
+
+.shell__rail-enlace[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 8px;
+  bottom: 8px;
+  width: 4px;
+  border-radius: 0 4px 4px 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--franja) 0 4px,
+    var(--texto-invertido) 4px 8px
+  );
+}
+
+.shell__contenido {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: calc(var(--tabbar-alto) + var(--sp-4));
+}
+
+/* --- Barra inferior (móvil) ---------------------------------------------------- */
+.shell__tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  display: flex;
+  height: var(--tabbar-alto);
+  background: var(--shell-fondo);
+  border-top: 1px solid rgba(245, 242, 236, 0.1);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.shell__tab {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  font-weight: var(--peso-medio);
+  color: var(--shell-texto-suave);
+  transition: color var(--dur-rapida) var(--curva-salida);
+}
+
+.shell__tab[aria-current='page'],
+.shell__tab--activo {
+  color: var(--texto-invertido);
+}
+
+/* Activo en la barra inferior: franja arriba */
+.shell__tab[aria-current='page']::before,
+.shell__tab--activo::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 25%;
+  right: 25%;
+  height: 3px;
+  border-radius: 0 0 4px 4px;
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--franja) 0 4px,
+    var(--texto-invertido) 4px 8px
+  );
+}
+
+/* Hoja "Más": enlaces apilados sobre fondo claro */
+.shell__menu-movil {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+/* Los enlaces del rail asumen fondo tinta; dentro de la hoja clara
+   hay que redefinir el estado activo para que no quede texto blanco
+   sobre blanco. */
+.shell__menu-movil .shell__rail-enlace {
+  color: var(--texto);
+}
+
+.shell__menu-movil .shell__rail-enlace:hover {
+  background: var(--shell-hover);
+  color: var(--texto);
+}
+
+.shell__menu-movil .shell__rail-enlace[aria-current='page'] {
+  background: var(--shell-activo);
+  color: var(--texto);
+}
+
+/* La franja vertical del rail está calculada para su contenedor; dentro
+   de la hoja se marca solo con el fondo resaltado. */
+.shell__menu-movil .shell__rail-enlace[aria-current='page']::before {
+  display: none;
+}
+
+/* --- Escritorio ----------------------------------------------------------------- */
+@media (min-width: 1024px) {
+  .shell__rail {
+    display: flex;
+  }
+
+  .shell__tabbar {
+    display: none;
+  }
+
+  .shell__contenido {
+    padding-bottom: var(--sp-6);
+  }
+}

@@ -1,6 +1,8 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
+// Fuente del proyecto auto-hospedada: funciona offline (PWA)
+import '@fontsource-variable/archivo'
 import App from './App'
 import ErrorBoundary from './components/ErrorBoundary'
 import './index.css'

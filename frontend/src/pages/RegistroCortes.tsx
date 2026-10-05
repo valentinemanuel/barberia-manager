@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
+import { CheckCircle2, CreditCard, Landmark, Banknote } from 'lucide-react'
 import api from '../services/api'
 import { mensajeError } from '../services/error'
 import { useAuthStore } from '../store/authStore'
 import { db } from '../services/db'
+import { Boton, Campo, Segmentado, Vacio, useToast } from '../components/ui'
+import { formatearMoneda } from '../utils/formato'
 
 interface Servicio {
   id: number
@@ -12,13 +15,22 @@ interface Servicio {
   duracion_minutos: number
 }
 
+type MetodoPago = 'efectivo' | 'tarjeta' | 'transferencia'
+
+/**
+ * Registrar un corte: los servicios se eligen como tarjetas (un toque,
+ * sin dropdown) y el método de pago con control segmentado.
+ * Si la red falla, el corte se guarda en el dispositivo y se sincroniza después.
+ */
 export default function RegistroCortes() {
   const { usuario } = useAuthStore()
+  const { mostrar } = useToast()
   const [servicios, setServicios] = useState<Servicio[]>([])
-  const [servicioSeleccionado, setServicioSeleccionado] = useState<number | ''>('')
-  const [metodoPago, setMetodoPago] = useState('efectivo')
-  const [mensaje, setMensaje] = useState('')
+  const [servicioSeleccionado, setServicioSeleccionado] = useState<number | null>(null)
+  const [metodoPago, setMetodoPago] = useState<MetodoPago>('efectivo')
   const [cargando, setCargando] = useState(false)
+  const [ultimoExito, setUltimoExito] = useState<string | null>(null)
+  const [sinServicios, setSinServicios] = useState(false)
 
   useEffect(() => {
     cargarServicios()
@@ -28,115 +40,159 @@ export default function RegistroCortes() {
     try {
       const response = await api.get('/servicios/')
       setServicios(response.data)
+      setSinServicios(response.data.length === 0)
     } catch (error) {
-      console.error('Error cargando servicios:', error)
-      // Cargar desde IndexedDB como fallback
+      console.error('Error cargando servicios, pruebo los locales:', error)
+      // Fallback offline: servicios cacheados en IndexedDB
       const locales = await db.servicios.where('activo').equals(1).toArray()
       setServicios(locales as Servicio[])
+      setSinServicios(locales.length === 0)
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const servicio = servicios.find((s) => s.id === servicioSeleccionado) ?? null
+  const ganancia =
+    servicio && usuario
+      ? servicio.precio * (usuario.porcentaje_ganancia / 100)
+      : 0
+
+  const registrar = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!servicioSeleccionado) {
-      setMensaje('Selecciona un servicio')
-      return
-    }
+    if (!servicio) return
 
     setCargando(true)
-    setMensaje('')
+    setUltimoExito(null)
 
     try {
       await api.post('/cortes/', {
-        servicio_id: servicioSeleccionado,
+        servicio_id: servicio.id,
         metodo_pago: metodoPago,
       })
-      setMensaje('✓ Corte registrado exitosamente')
-      setServicioSeleccionado('')
-    } catch (error: any) {
-      setMensaje(mensajeError(error, 'Error al registrar corte'))
+      setUltimoExito(servicio.nombre)
+      mostrar('exito', `Corte registrado: ${servicio.nombre}`)
+      setServicioSeleccionado(null)
+    } catch (error: unknown) {
+      const huboRespuesta = Boolean(
+        (error as { response?: unknown }).response
+      )
+
+      if (!huboRespuesta && usuario) {
+        // Sin red: guardo en el dispositivo; useSync lo enviará al reconectar
+        const parte = Math.round(servicio.precio * (usuario.porcentaje_ganancia / 100) * 100) / 100
+        await db.cortes.add({
+          barbero_id: usuario.id,
+          servicio_id: servicio.id,
+          precio: servicio.precio,
+          porcentaje_barbero: usuario.porcentaje_ganancia,
+          parte_barbero: parte,
+          parte_barberia: Math.round((servicio.precio - parte) * 100) / 100,
+          metodo_pago: metodoPago,
+          fecha: new Date().toISOString(),
+          sincronizado: false,
+        })
+        mostrar('info', 'Sin conexión: el corte quedó guardado en el dispositivo y se sincronizará solo.')
+        setServicioSeleccionado(null)
+      } else {
+        mostrar('error', mensajeError(error, 'No se pudo registrar el corte'))
+      }
     } finally {
       setCargando(false)
     }
   }
 
+  if (sinServicios) {
+    return (
+      <div className="contenedor">
+        <Vacio
+          titulo="No hay servicios cargados"
+          texto="Tocá “Servicios” para dar de alta el primero, o esperá a que sincronice si recién entraste en la barbería."
+        />
+      </div>
+    )
+  }
+
   return (
-    <div className="max-w-2xl mx-auto">
-      <h2 className="text-2xl font-bold mb-4">Registrar Corte ✂️</h2>
+    <div className="contenedor">
+      <div className="registro">
+        <header className="pagina__cabecera">
+          <div>
+            <h1>Registrar corte</h1>
+            <p className="pagina__descripcion">
+              Elegí el servicio, cobrá como te paguen y listo.
+            </p>
+          </div>
+        </header>
 
-      <form onSubmit={handleSubmit} className="card">
-        <div className="mb-4">
-          <label className="label">Servicio</label>
-          <select
-            className="input"
-            value={servicioSeleccionado}
-            onChange={(e) => setServicioSeleccionado(Number(e.target.value))}
-            required
+        {ultimoExito && (
+          <div className="registro__exito" role="status">
+            <CheckCircle2 size={18} aria-hidden="true" />
+            {ultimoExito} registrado. ¿Seguimos con el próximo?
+          </div>
+        )}
+
+        <form onSubmit={registrar} className="pagina">
+          <fieldset className="ui-campo" style={{ border: 'none', padding: 0, margin: 0 }}>
+            <legend className="ui-campo__etiqueta" style={{ padding: 0 }}>
+              Servicio
+            </legend>
+            <div className="ui-tarjetas-seleccion">
+              {servicios.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className="ui-tarjeta-seleccion"
+                  role="radio"
+                  aria-checked={s.id === servicioSeleccionado}
+                  onClick={() => setServicioSeleccionado(s.id)}
+                >
+                  <span>
+                    <span className="ui-tarjeta-seleccion__nombre">{s.nombre}</span>
+                    <span className="ui-tarjeta-seleccion__meta" style={{ display: 'block' }}>
+                      {s.duracion_minutos} min
+                    </span>
+                  </span>
+                  <span className="ui-tarjeta-seleccion__precio">
+                    {formatearMoneda(s.precio)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </fieldset>
+
+          <Campo etiqueta="Método de pago" id="metodo-pago">
+            <Segmentado
+              etiqueta="Método de pago"
+              valor={metodoPago}
+              onCambio={setMetodoPago}
+              opciones={[
+                { valor: 'efectivo', etiqueta: 'Efectivo', icono: <Banknote size={16} /> },
+                { valor: 'tarjeta', etiqueta: 'Tarjeta', icono: <CreditCard size={16} /> },
+                { valor: 'transferencia', etiqueta: 'Transferencia', icono: <Landmark size={16} /> },
+              ]}
+            />
+          </Campo>
+
+          {servicio && (
+            <div className="registro__preview">
+              <span className="registro__preview-etiqueta">
+                Tu ganancia ({usuario?.porcentaje_ganancia}%)
+              </span>
+              <span className="registro__preview-valor cifra">
+                {formatearMoneda(ganancia)}
+              </span>
+            </div>
+          )}
+
+          <Boton
+            type="submit"
+            cargando={cargando}
+            disabled={!servicio}
+            ancho
           >
-            <option value="">Selecciona un servicio</option>
-            {servicios.map((servicio) => (
-              <option key={servicio.id} value={servicio.id}>
-                {servicio.nombre} - ${servicio.precio.toFixed(2)}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="mb-4">
-          <label className="label">Método de Pago</label>
-          <div className="grid grid-3 gap-2">
-            {['efectivo', 'tarjeta', 'transferencia'].map((metodo) => (
-              <button
-                key={metodo}
-                type="button"
-                className={`p-3 rounded-lg border-2 transition-colors ${
-                  metodoPago === metodo
-                    ? 'border-[var(--color-highlight)] bg-red-50'
-                    : 'border-[var(--color-border)]'
-                }`}
-                onClick={() => setMetodoPago(metodo)}
-              >
-                {metodo === 'efectivo' && '💵'}
-                {metodo === 'tarjeta' && '💳'}
-                {metodo === 'transferencia' && '🏦'}
-                <span className="ml-2 capitalize">{metodo}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {servicioSeleccionado && (
-          <div className="mb-4 p-4 bg-blue-50 rounded-lg">
-            <p className="text-sm text-[var(--color-text-muted)]">
-              Tu ganancia ({usuario?.porcentaje_ganancia}%):
-            </p>
-            <p className="text-2xl font-bold text-[var(--color-success)]">
-              ${(
-                servicios.find((s) => s.id === servicioSeleccionado)!.precio *
-                ((usuario?.porcentaje_ganancia ?? 0) / 100)
-              ).toFixed(2)}
-            </p>
-          </div>
-        )}
-
-        {mensaje && (
-          <div className={`mb-4 p-3 rounded-lg text-sm ${
-            mensaje.startsWith('✓')
-              ? 'bg-green-50 text-green-600'
-              : 'bg-red-50 text-red-600'
-          }`}>
-            {mensaje}
-          </div>
-        )}
-
-        <button
-          type="submit"
-          className="btn btn-primary w-full"
-          disabled={cargando}
-        >
-          {cargando ? 'Registrando...' : 'Registrar Corte'}
-        </button>
-      </form>
+            Registrar corte
+          </Boton>
+        </form>
+      </div>
     </div>
   )
 }

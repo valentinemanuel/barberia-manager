@@ -1,102 +1,204 @@
 import { ReactNode, useState } from 'react'
+import { NavLink, useLocation } from 'react-router-dom'
+import {
+  LayoutDashboard,
+  Scissors,
+  Users,
+  ClipboardList,
+  Package,
+  BarChart3,
+  Wallet,
+  LogOut,
+  WifiOff,
+  RefreshCw,
+  MoreHorizontal,
+} from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
-import { Link, useLocation } from 'react-router-dom'
+import { useOnlineStatus } from '../hooks/useOnlineStatus'
+import { useSync } from '../hooks/useSync'
+import { ToastProvider, Modal } from './ui'
+
+/** Pestañas visibles en la barra inferior; el resto va en la hoja "Más". */
+const MAX_TABS_MOVIL = 3
 
 interface LayoutProps {
   children: ReactNode
 }
 
+interface Enlace {
+  ruta: string
+  nombre: string
+  icono: ReactNode
+}
+
 export default function Layout({ children }: LayoutProps) {
   const { usuario, logout } = useAuthStore()
   const location = useLocation()
-  const [menuAbierto, setMenuAbierto] = useState(false)
+  const [menuMovilAbierto, setMenuMovilAbierto] = useState(false)
 
-  const enlaces = [
-    { ruta: '/', nombre: 'Dashboard', icono: '📊' },
-    { ruta: '/cortes', nombre: 'Cortes', icono: '✂️' },
+  const enlaces: Enlace[] = [
+    { ruta: '/', nombre: 'Inicio', icono: <LayoutDashboard size={18} /> },
+    { ruta: '/cortes', nombre: 'Cortes', icono: <Scissors size={18} /> },
   ]
 
   if (usuario?.rol === 'admin') {
     enlaces.push(
-      { ruta: '/usuarios', nombre: 'Usuarios', icono: '👥' },
-      { ruta: '/servicios', nombre: 'Servicios', icono: '📋' },
-      { ruta: '/productos', nombre: 'Productos', icono: '📦' },
-      { ruta: '/reportes', nombre: 'Reportes', icono: '📈' },
-      { ruta: '/cierre-caja', nombre: 'Cierre de Caja', icono: '💰' },
+      { ruta: '/usuarios', nombre: 'Usuarios', icono: <Users size={18} /> },
+      { ruta: '/servicios', nombre: 'Servicios', icono: <ClipboardList size={18} /> },
+      { ruta: '/productos', nombre: 'Productos', icono: <Package size={18} /> },
+      { ruta: '/reportes', nombre: 'Reportes', icono: <BarChart3 size={18} /> },
+      { ruta: '/cierre-caja', nombre: 'Cierre de caja', icono: <Wallet size={18} /> }
+    )
+  }
+
+  // En pantallas angostas la barra inferior solo admite un puñado de pestañas;
+  // el resto (incluida la ruta activa actual) vive en la hoja "Más".
+  const tabsVisibles = enlaces.slice(0, MAX_TABS_MOVIL)
+  const restantes = enlaces.slice(MAX_TABS_MOVIL)
+
+  // Si la ruta activa quedó fuera de las pestañas visibles, "Más" se resalta
+  // para que el usuario sepa dónde está parado.
+  const hayActivaEnRestantes = restantes.some((enlace) =>
+    enlace.ruta === '/'
+      ? location.pathname === '/'
+      : location.pathname.startsWith(enlace.ruta)
+  )
+
+  return (
+    <ToastProvider>
+      <div className="shell">
+        <header className="shell__topbar">
+          <span className="shell__marca">
+            <span className="shell__franja" aria-hidden="true" />
+            Barbería
+          </span>
+
+          <div className="shell__topbar-derecha">
+            <IndicadorConexion />
+            <span className="shell__usuario">
+              <span className="shell__usuario-nombre">
+                {usuario?.nombre} {usuario?.apellido}
+              </span>
+              <span className="shell__usuario-rol">{usuario?.rol}</span>
+            </span>
+            <button
+              type="button"
+              onClick={logout}
+              className="ui-boton ui-boton--fantasma ui-boton--peq"
+              style={{ color: 'var(--shell-texto)' }}
+              aria-label="Cerrar sesión"
+              title="Cerrar sesión"
+            >
+              <LogOut size={16} aria-hidden="true" />
+            </button>
+          </div>
+        </header>
+
+        <div className="shell__cuerpo">
+          <nav className="shell__rail" aria-label="Navegación principal">
+            {enlaces.map((enlace) => (
+              <NavLink
+                key={enlace.ruta}
+                to={enlace.ruta}
+                end={enlace.ruta === '/'}
+                className="shell__rail-enlace"
+              >
+                {enlace.icono}
+                {enlace.nombre}
+              </NavLink>
+            ))}
+          </nav>
+
+          <main className="shell__contenido">
+            <div key={location.pathname} className="animar-pagina">
+              {children}
+            </div>
+          </main>
+        </div>
+
+        <nav className="shell__tabbar" aria-label="Navegación principal">
+          {tabsVisibles.map((enlace) => (
+            <NavLink
+              key={enlace.ruta}
+              to={enlace.ruta}
+              end={enlace.ruta === '/'}
+              className="shell__tab"
+            >
+              {enlace.icono}
+              {enlace.nombre}
+            </NavLink>
+          ))}
+
+          {restantes.length > 0 && (
+            <button
+              type="button"
+              className={`shell__tab ${
+                hayActivaEnRestantes ? 'shell__tab--activo' : ''
+              }`.trim()}
+              onClick={() => setMenuMovilAbierto(true)}
+              aria-haspopup="dialog"
+              aria-expanded={menuMovilAbierto}
+            >
+              <MoreHorizontal size={18} aria-hidden="true" />
+              Más
+            </button>
+          )}
+        </nav>
+
+        {/* Hoja con las rutas que no caben en la barra inferior */}
+        <Modal
+          abierto={menuMovilAbierto}
+          onCerrar={() => setMenuMovilAbierto(false)}
+          titulo="Más secciones"
+        >
+          <div className="shell__menu-movil">
+            {restantes.map((enlace) => (
+              <NavLink
+                key={enlace.ruta}
+                to={enlace.ruta}
+                end={enlace.ruta === '/'}
+                className="shell__rail-enlace"
+                onClick={() => setMenuMovilAbierto(false)}
+              >
+                {enlace.icono}
+                {enlace.nombre}
+              </NavLink>
+            ))}
+          </div>
+        </Modal>
+      </div>
+    </ToastProvider>
+  )
+}
+
+/**
+ * Píldora de conexión en la topbar: informa offline y sincronización.
+ * No aparece nada cuando todo está en orden.
+ */
+function IndicadorConexion() {
+  const online = useOnlineStatus()
+  const { sincronizando, ultimaSync } = useSync()
+
+  if (online && !sincronizando) return null
+
+  if (sincronizando) {
+    return (
+      <span className="shell__conexion shell__conexion--sincronizando">
+        <RefreshCw size={13} className="shell__conexion-gira" aria-hidden="true" />
+        Sincronizando
+        {ultimaSync && (
+          <span className="ui-sr-oculto">
+            , última sincronización {ultimaSync.toLocaleTimeString('es-ES')}
+          </span>
+        )}
+      </span>
     )
   }
 
   return (
-    <div className="min-h-screen bg-[var(--color-bg)]">
-      {/* Header */}
-      <header className="bg-[var(--color-primary)] text-white p-4 shadow-lg">
-        <div className="container flex flex-between flex-center">
-          <h1 className="text-xl font-bold">Barbería</h1>
-          <div className="flex flex-center gap-2">
-            <span className="text-sm opacity-80">
-              {usuario?.nombre} {usuario?.apellido}
-            </span>
-            <button
-              onClick={logout}
-              className="btn btn-danger text-sm py-1 px-3"
-            >
-              Salir
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {/* Navegación móvil */}
-      <nav className="bg-[var(--color-secondary)] p-2 md:hidden">
-        <button
-          onClick={() => setMenuAbierto(!menuAbierto)}
-          className="btn btn-secondary w-full"
-        >
-          {menuAbierto ? '✕ Cerrar' : '☰ Menú'}
-        </button>
-        {menuAbierto && (
-          <div className="mt-2 grid gap-1">
-            {enlaces.map((enlace) => (
-              <Link
-                key={enlace.ruta}
-                to={enlace.ruta}
-                className={`p-3 rounded-lg text-white ${
-                  location.pathname === enlace.ruta
-                    ? 'bg-[var(--color-highlight)]'
-                    : 'bg-[var(--color-accent)]'
-                }`}
-                onClick={() => setMenuAbierto(false)}
-              >
-                {enlace.icono} {enlace.nombre}
-              </Link>
-            ))}
-          </div>
-        )}
-      </nav>
-
-      {/* Navegación desktop */}
-      <nav className="bg-[var(--color-secondary)] p-2 hidden md:block">
-        <div className="container flex gap-2">
-          {enlaces.map((enlace) => (
-            <Link
-              key={enlace.ruta}
-              to={enlace.ruta}
-              className={`px-4 py-2 rounded-lg text-white transition-colors ${
-                location.pathname === enlace.ruta
-                  ? 'bg-[var(--color-highlight)]'
-                  : 'bg-[var(--color-accent)] hover:bg-[var(--color-highlight)]'
-              }`}
-            >
-              {enlace.icono} {enlace.nombre}
-            </Link>
-          ))}
-        </div>
-      </nav>
-
-      {/* Contenido */}
-      <main className="container py-4">
-        {children}
-      </main>
-    </div>
+    <span className="shell__conexion shell__conexion--offline">
+      <WifiOff size={13} aria-hidden="true" />
+      Sin conexión
+    </span>
   )
 }

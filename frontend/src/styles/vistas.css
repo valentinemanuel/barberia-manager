@@ -1,0 +1,195 @@
+/* ==========================================================================
+   Estilos de vistas internas: dashboards, registro de cortes, tablas de gestión
+   ========================================================================== */
+
+/* --- Dashboards ---------------------------------------------------------------- */
+
+/* Períodos secundarios debajo de la cifra principal, separados por filete */
+.dashboard__periodos {
+  display: flex;
+  gap: var(--sp-5);
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--borde);
+}
+
+.dashboard__periodos > * {
+  flex: 1;
+}
+
+.dashboard__lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dashboard__fila {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--borde);
+}
+
+.dashboard__fila:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.dashboard__orden {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: var(--radio-sm);
+  background: #f0ede5;
+  color: var(--texto-suave);
+  font-size: var(--fs-xs);
+  font-weight: var(--peso-semi);
+}
+
+.dashboard__fila-nombre {
+  flex: 1;
+  min-width: 0;
+  font-weight: var(--peso-medio);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard__fila-valor {
+  font-size: var(--fs-base);
+  font-weight: var(--peso-semi);
+  color: var(--texto-suave);
+  white-space: nowrap;
+}
+
+.dashboard__enlace {
+  color: var(--laton);
+  font-weight: var(--peso-semi);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Tarjeta destacada del barbero: el porcentaje es lo suyo */
+.dashboard__porcentaje {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+}
+
+.dashboard__porcentaje-valor {
+  font-size: var(--fs-3xl);
+  font-weight: var(--peso-negro);
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--laton);
+}
+
+/* CTA del barbero: la acción principal de su jornada */
+.dashboard__cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+}
+
+/* --- Registro de cortes ------------------------------------------------------------ */
+
+.registro {
+  max-width: 640px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.registro__preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+  background: var(--exito-fondo);
+  border: 1px solid #c4e4d2;
+  border-radius: var(--radio);
+}
+
+.registro__preview-etiqueta {
+  font-size: var(--fs-sm);
+  color: var(--exito);
+  font-weight: var(--peso-medio);
+}
+
+.registro__preview-valor {
+  font-size: var(--fs-xl);
+  font-weight: var(--peso-negro);
+  color: var(--exito);
+}
+
+/* Confirmación del último corte registrado */
+.registro__exito {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--exito-fondo);
+  border-radius: var(--radio);
+  color: var(--exito);
+  font-size: var(--fs-base);
+  font-weight: var(--peso-medio);
+  animation: surgir var(--dur-normal) var(--curva-entrada) both;
+}
+
+/* --- Tablas de gestión ---------------------------------------------------------------- */
+
+.gestion__fila-acciones {
+  display: flex;
+  gap: var(--sp-2);
+  justify-content: flex-end;
+}
+
+/* --- Cierre de caja -------------------------------------------------------------------- */
+
+.cierre__resumen {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--sp-4);
+}
+
+.cierre__diferencia {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-4);
+  border-radius: var(--radio);
+  background: #f0ede5;
+}
+
+.cierre__diferencia--cuadra {
+  background: var(--exito-fondo);
+}
+
+.cierre__diferencia--sobra {
+  background: var(--alerta-fondo);
+}
+
+.cierre__diferencia--falta {
+  background: var(--peligro-fondo);
+}
+
+.cierre__diferencia-nota {
+  font-size: var(--fs-sm);
+  color: var(--texto-suave);
+}
+
+@media (max-width: 600px) {
+  .cierre__resumen {
+    grid-template-columns: 1fr;
+  }
+}

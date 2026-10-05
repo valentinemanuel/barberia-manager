@@ -21,8 +21,13 @@ export function useSync() {
       // MIENTRAS offline, el rol usado es el último rol conocido cacheado
       // (authStore persistido); al sincronizar, el servidor revalida cada
       // operación contra el rol/activo vigente en DB (RF-17/18).
+      // Los cortes pendientes se filtran en memoria: `sincronizado` se guarda
+      // como boolean, y en IndexedDB los booleanos NO son claves válidas, así
+      // que no entran al índice y where('sincronizado').equals(0) devuelve
+      // siempre [] (verificado: 0 vs 1 con filter). Sin este filtro, los cortes
+      // encolados offline nunca se sincronizan.
       const cortesPendientes = (
-        await db.cortes.where('sincronizado').equals(0).toArray()
+        await db.cortes.filter((c) => !c.sincronizado).toArray()
       ).filter((c) => !c.rechazado)
 
       if (cortesPendientes.length > 0) {
