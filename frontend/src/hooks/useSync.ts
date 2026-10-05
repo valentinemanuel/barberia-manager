@@ -17,21 +17,51 @@ export function useSync() {
   const sincronizar = async () => {
     setSincronizando(true)
     try {
-      // Sincronizar cortes pendientes
-      const cortesPendientes = await db.cortes
-        .where('sincronizado')
-        .equals(0)
-        .toArray()
+      // Sincronizar operaciones pendientes (cortes encolados mientras offline).
+      // MIENTRAS offline, el rol usado es el último rol conocido cacheado
+      // (authStore persistido); al sincronizar, el servidor revalida cada
+      // operación contra el rol/activo vigente en DB (RF-17/18).
+      const cortesPendientes = (
+        await db.cortes.where('sincronizado').equals(0).toArray()
+      ).filter((c) => !c.rechazado)
 
-      for (const corte of cortesPendientes) {
+      if (cortesPendientes.length > 0) {
         try {
-          await api.post('/cortes/', {
-            servicio_id: corte.servicio_id,
-            metodo_pago: corte.metodo_pago,
+          const respuesta = await api.post('/sync/', {
+            operaciones: cortesPendientes.map((corte) => ({
+              id: String(corte.id),
+              accion: 'crear_corte',
+              datos: {
+                servicio_id: corte.servicio_id,
+                metodo_pago: corte.metodo_pago,
+              },
+            })),
           })
-          await db.cortes.update(corte.id!, { sincronizado: true })
+          const resultados = respuesta.data.resultados ?? []
+          const rechazadas: string[] = []
+          for (const resultado of resultados) {
+            const corteLocal = cortesPendientes.find(
+              (c) => String(c.id) === String(resultado.id)
+            )
+            if (!corteLocal) continue
+            if (resultado.aceptada) {
+              await db.cortes.update(corteLocal.id!, { sincronizado: true })
+            } else {
+              await db.cortes.update(corteLocal.id!, {
+                rechazado: true,
+                error_sync: resultado.motivo ?? 'rechazado',
+              })
+              rechazadas.push(resultado.notificacion ?? `Corte ${corteLocal.id} rechazado (409)`)
+            }
+          }
+          if (rechazadas.length > 0) {
+            window.alert(
+              '⚠️ Algunas operaciones no se pudieron sincronizar:\n\n' +
+                rechazadas.join('\n')
+            )
+          }
         } catch (error) {
-          console.error('Error sincronizando corte:', error)
+          console.error('Error sincronizando cortes:', error)
         }
       }
 

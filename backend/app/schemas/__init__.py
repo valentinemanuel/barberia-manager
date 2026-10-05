@@ -51,6 +51,7 @@ from app.schemas.reporte import (
     DashboardAdmin,
     DashboardBarbero,
 )
+from app.schemas.auditoria import AuditoriaResponse, AuditoriaListResponse
 
 __all__ = [
     "UsuarioBase",
@@ -88,4 +89,6 @@ __all__ = [
     "ReporteBarbero",
     "DashboardAdmin",
     "DashboardBarbero",
+    "AuditoriaResponse",
+    "AuditoriaListResponse",
 ]

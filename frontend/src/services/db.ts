@@ -11,6 +11,8 @@ export interface CorteLocal {
   metodo_pago: string
   fecha: string
   sincronizado: boolean
+  rechazado?: boolean
+  error_sync?: string
 }
 
 export interface ServicioLocal {

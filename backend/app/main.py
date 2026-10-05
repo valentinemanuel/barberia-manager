@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import engine, Base
+from app import models  # noqa: F401  # asegura que todos los modelos (incl. Auditoria) estén registrados
 from app.routers import (
     auth,
     usuarios,
@@ -13,6 +14,8 @@ from app.routers import (
     cierre_caja,
     ventas,
     reportes,
+    auditoria,
+    sync,
 )
 
 # Crear tablas
@@ -44,6 +47,8 @@ app.include_router(gastos.router)
 app.include_router(cierre_caja.router)
 app.include_router(ventas.router)
 app.include_router(reportes.router)
+app.include_router(auditoria.router)
+app.include_router(sync.router)
 
 
 @app.get("/")

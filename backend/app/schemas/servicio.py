@@ -24,6 +24,8 @@ class ServicioActualizar(BaseModel):
 
 
 class ServicioResponse(ServicioBase):
+    # Solo expone precio_venta (precio) al usuario autenticado.
+    # No se incluyen costos ni márgenes.
     id: int
     activo: bool
     creado_en: datetime
