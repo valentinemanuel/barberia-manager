@@ -560,7 +560,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-22–27, RF-42, RF-46 
 
 ### Tareas en orden de dependencia
 
-- [ ] **T42. Columnas de anulación + migración 004.** RF-27 (base), RNF-3.
+- [x] **T42. Columnas de anulación + migración 004.** RF-27 (base), RNF-3.
   - Dependencias: ninguna dentro del paquete.
   - Tests primero: `history` muestra `004`; `upgrade` en TEMP vacía agrega las columnas; en TEMP con legacy + `create_all` no toca nada (guard); repetir no-op.
   - Implementar: `anulado_en`/`anulado_motivo`/`anulado_por` nullable en `Corte` + revisión solo-aditiva con guard de existencia.
@@ -611,7 +611,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-22–27, RF-42, RF-46 
 
 | Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
 |---|---|---|---|
-| T42 |  |  |  |
+| T42 | Rojo real: `history` mostraba solo hasta `003` (+ `String` sin importar que rompía el modelo) | Verde: `history` con `004`; TEMP vacía salta (sin tabla); legacy + `create_all` dispara guard; legacy vieja real (9 tablas, 1 fila) agrega las 3 columnas con FK nombrada preservando la fila; repetir no-op | Hallazgos honestos del camino: `String` faltante, `op.create_foreign_key` directo incompatible con SQLite, batch exige FK nombrada — todo verificado en TEMP. `barberia.db` hash estable (`4c7f1b19…`); prohibido aplicar contra base real. Modelo + revisión `004` (batch aditivo). |
 | T43 |  |  |  |
 | T44 |  |  |  |
 | T45 |  |  |  |
