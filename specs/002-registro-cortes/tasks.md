@@ -409,7 +409,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-32 + base RF-30). No s
   - Implementar: leer `operacion_uuid` opcional de `op.datos` y pasarlo al ejecutor con namespace `"sync"`.
   - Hecho cuando: tests del envelope en verde y el resto del protocolo sync intacto.
 
-- [ ] **T33. Regresión total y cierre del paquete.** RF-30/RF-32/RF-57 (parciales), RNF-3/RNF-6.
+- [x] **T33. Regresión total y cierre del paquete.** RF-30/RF-32/RF-57 (parciales), RNF-3/RNF-6.
   - Dependencias: T26–T32.
   - Ejecutar por archivo las suites tocadas + suite aislada del paquete 1, todo en verde, con precaución DB real + gate de migración registrados (ningún `upgrade` contra base real ejecutado).
   - Registrar comandos/resultados en la evidencia de abajo y actualizar el estado sin declarar implementada la spec completa. El cierre requiere revisión independiente (`sdd-reviewer`) y no autoriza paquete 6.
@@ -426,4 +426,4 @@ Aprobación recibida: alcance aprobado por el usuario (RF-32 + base RF-30). No s
 | T30 | Verde inicial real (el ejecutor jamás reejecuta por diseño T27; sin rojo artificial ni cambio productivo) | Mismo verde | Test: catálogo cambiado (200.00/60%) + replay → mismo id, `50.00`/`100.00` originales. Solo `test_cortes.py` + este documento. |
 | T31 | Rojo real y flaky: 2/5 corridas con un solo resultado (el perdedor moría con 500 por contención) | Verde estable: 6/6 corridas + `64 passed` (3 archivos) + `167` aislada | DB estable en baseline T27; solo `operacion_corte_service.py` + `routers/cortes.py` + `test_cortes.py`. Cambio: reintento acotado (3) con rollback en flush (ejecutor) y en commit (router); el constraint único decide el ganador y el resto converge a su acuse. |
 | T32 | Rojo real: reenvío del lote duplicaba (2 cortes) | Verde: `42 passed` (2 archivos) | DB estable en baseline T27; solo `routers/sync.py` + `test_cortes.py`. Cambio: `operacion_uuid` opcional en datos → ejecutor con namespace `sync` y modo `offline`; sin UUID el camino no cambia (limitación retroactiva documentada, sin promesa). Conflicto cae en 409 existente vía `ValueError`. |
-| T33 |  |  |  |
+| T33 | Sin rojo: solo verificación final, sin cambios productivos nuevos | Verde: `69 + 2 + 8 + 10 + 2` por archivo (toda la suite backend) + `167 passed` aislada | DB estable en baseline T27 (`b691f8c5…`, ver divulgación T27); ningún `upgrade` contra base real ejecutado; `git status` solo este documento. Paquete 5 completo en cobertura parcial, sin declarar spec implementada; cierre pendiente de revisión independiente (`sdd-reviewer`), que no autoriza paquete 6. |
