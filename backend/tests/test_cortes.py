@@ -283,3 +283,37 @@ def test_crear_corte_no_commitea_persiste_solo_con_commit_externo(client):
     assert verificacion.query(Corte).filter(Corte.id == corte.id).first() is not None
     verificacion.close()
     db.close()
+
+
+def _payload_usuario_crear(porcentaje):
+    return {
+        "nombre": "Nuevo",
+        "apellido": "Barbero",
+        "email": "nuevo@test.com",
+        "usuario": "nuevousuario",
+        "password": "pass123",
+        "rol": "barbero",
+        "porcentaje_ganancia": porcentaje,
+    }
+
+
+def test_usuario_rechaza_porcentaje_con_mas_de_dos_decimales():
+    """T10: '50.000' y 50.001 se rechazan (RF-41), aunque estén en rango."""
+    from pydantic import ValidationError
+    from app.schemas.usuario import UsuarioCrear, UsuarioActualizar
+
+    with pytest.raises(ValidationError):
+        UsuarioCrear(**_payload_usuario_crear("50.000"))
+    with pytest.raises(ValidationError):
+        UsuarioCrear(**_payload_usuario_crear(50.001))
+    with pytest.raises(ValidationError):
+        UsuarioActualizar(porcentaje_ganancia="50.001")
+
+
+def test_usuario_acepta_porcentaje_canonico_sin_normalizar():
+    """T10: 50.25, 100 y 0 pasan conservando representación."""
+    from app.schemas.usuario import UsuarioCrear
+
+    assert UsuarioCrear(**_payload_usuario_crear("50.25")).porcentaje_ganancia == Decimal("50.25")
+    assert UsuarioCrear(**_payload_usuario_crear(100)).porcentaje_ganancia == Decimal("100")
+    assert UsuarioCrear(**_payload_usuario_crear(0)).porcentaje_ganancia == Decimal("0")
