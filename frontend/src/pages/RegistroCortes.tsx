@@ -85,7 +85,6 @@ export default function RegistroCortes() {
           precio: servicio.precio,
           porcentaje_barbero: usuario.porcentaje_ganancia,
           parte_barbero: parte,
-          parte_barberia: Math.round((servicio.precio - parte) * 100) / 100,
           metodo_pago: metodoPago,
           fecha: new Date().toISOString(),
           sincronizado: false,

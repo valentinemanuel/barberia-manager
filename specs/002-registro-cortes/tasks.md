@@ -236,7 +236,7 @@ Decisión del gate registrada: se crea el DTO personal `CortePersonal` (= `Corte
   - Tests primero (deben fallar si algún campo prohibido aparece): recorrer las respuestas de `/mi/historial`, `/{id}` propio, `POST /` y resúmenes `/mi/resumen/*` y afirmar ausencia de `parte_barberia`, `costo`, `margen`, `bruto`, `total_cortes` globales o datos de otro barbero.
   - Hecho cuando: el test falla ante cualquier filtración futura y pasa con los contratos del paquete; sin cambiar código productivo en esta tarea salvo lo necesario para el test.
 
-- [ ] **T18. Limpiar la parte local de la barbería en el frontend.** RF-15 (parcial), RNF-1.
+- [x] **T18. Limpiar la parte local de la barbería en el frontend.** RF-15 (parcial), RNF-1.
   - Dependencias: T15–T16 (el backend ya no la envía).
   - Verificar primero con grep que nada renderiza `parte_barberia` en vistas de barbero (constatado: solo cálculo local + tipos).
   - Implementar: retirar el cálculo de `parte_barberia` en el guardado offline de `RegistroCortes.tsx` (conservar `parte_barbero` estimada) y el campo en `CorteLocal` (`db.ts`) si nada más lo lee; el tipo de admin (`DashboardAdmin.tsx`) no se toca.
@@ -256,5 +256,5 @@ Decisión del gate registrada: se crea el DTO personal `CortePersonal` (= `Corte
 | T15 | Rojo real: 2 failed (`"parte_barberia" not in items[0]` con `CorteResponse`) | Verde: `39 passed` (`test_cortes.py` + `test_roles_permisos.py`) | Desde `backend`: pytest por archivo. `barberia.db` hash idéntico; solo `routers/cortes.py` + `test_cortes.py`. Cambio: `response_model=list[CortePersonal]` en `mis_cortes`; listado global admin intacto. |
 | T16 | Rojo real: ausencia de `parte_barberia` falló en detalle/registro con `CorteResponse` | Verde: `44 passed` (3 archivos) | Efecto colateral honesto: 4 assertions viejas (T7/T11/legacy) esperaban el campo en la API y se migraron al contrato nuevo (el resto exacto se verifica en fila DB + suite aislada). `barberia.db` hash idéntico; solo `routers/cortes.py` + `test_cortes.py`. Cambio: `response_model=CortePersonal` en detalle y registro; 404 ajeno intacto; admin conserva listado + reportes. |
 | T17 | Verde inicial real: contratos ya limpios tras T15–T16 (sin rojo artificial ni cambio productivo) | Mismo verde | Sensibilidad del detector verificada una vez sin commitear: detecta `parte_barberia` en `CorteResponse` (contrato admin). Recorre registro/historial/detalle/3 resúmenes. Solo `test_cortes.py` + este documento. |
-| T18 |  |  |  |
+| T18 | Rojo: grep hallaba `parte_barberia` en `db.ts` y `RegistroCortes.tsx` (código de barbero) | Verde: `npm run build` (tsc + vite) OK; grep limpio en código de barbero | Retirados cálculo offline y campo `CorteLocal`; tipo de admin intacto; filas Dexie viejas con el campo se ignoran sin migrar (propiedad extra tolerada). Solo `db.ts` + `RegistroCortes.tsx` + este documento. |
 | T19 |  |  |  |
