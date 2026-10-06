@@ -1094,6 +1094,302 @@ def test_sync_reenvio_con_uuid_no_duplica(client):
     db.close()
 
 
+def _abonar(client, token, corte_id, concepto, importe, extra=None):
+    body = {"concepto": concepto, "importe": importe, "metodo_pago": "efectivo"}
+    if extra:
+        body.update(extra)
+    return client.post(
+        f"/api/cortes/{corte_id}/movimientos",
+        json=body,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+
+def _corte_para_abonos(client, login, porcentaje="50", precio="100.00"):
+    from app.models.corte import Corte as CorteModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, login, Decimal(porcentaje), Decimal(precio))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+    respuesta = _login_y_registrar_corte(client, login, servicio_id)
+    assert respuesta.status_code == 201
+    return respuesta.json()["id"]
+
+
+def test_abono_parcial_por_concepto_201(client):
+    """T35: abono cliente 30 sobre 100 conserva importe real."""
+    corte_id = _corte_para_abonos(client, "barbero_t35")
+    respuesta = _abonar(client, _token_para(client, "barbero_t35"), corte_id, "cliente", 30)
+    assert respuesta.status_code == 201
+    assert respuesta.json()["importe"] == "30.00"
+    assert respuesta.json()["concepto"] == "cliente"
+
+
+def test_abono_invalido_400(client):
+    """T35: abono 0/negativo/3 decimales → 400 sin crear movimiento."""
+    from app.models.finanzas_corte import MovimientoCorte
+
+    corte_id = _corte_para_abonos(client, "barbero_t35b")
+    token = _token_para(client, "barbero_t35b")
+    for importe in (0, -10, "10.005"):
+        assert _abonar(client, token, corte_id, "cliente", importe).status_code == 400
+    db = TestingSessionLocal()
+    assert db.query(MovimientoCorte).count() == 0
+    db.close()
+
+
+def test_abono_uuid_duplicado_un_solo_movimiento(client):
+    """T35: reintento con misma UUID → un solo movimiento."""
+    import uuid as uuid_lib
+    from app.models.finanzas_corte import MovimientoCorte
+
+    corte_id = _corte_para_abonos(client, "barbero_t35c")
+    token = _token_para(client, "barbero_t35c")
+    op_id = str(uuid_lib.uuid4())
+    r1 = _abonar(client, token, corte_id, "cliente", 30, {"uuid": op_id})
+    r2 = _abonar(client, token, corte_id, "cliente", 30, {"uuid": op_id})
+    assert r1.status_code == 201
+    assert r2.status_code == 201
+    assert r1.json()["id"] == r2.json()["id"]
+    db = TestingSessionLocal()
+    assert db.query(MovimientoCorte).count() == 1
+    db.close()
+
+
+def test_abono_uuid_invalida_422(client):
+    """Revision P6: uuid de movimiento con formato invalido -> 422."""
+    corte_id = _corte_para_abonos(client, "barbero_t35g")
+    respuesta = _abonar(
+        client, _token_para(client, "barbero_t35g"), corte_id, "cliente", 10,
+        {"uuid": "no-es-uuid"},
+    )
+    assert respuesta.status_code == 422
+
+
+def test_abono_corte_ajeno_404(client):
+    """T35: titularidad — corte ajeno → 404."""
+    from app.models.usuario import Rol as RolModelo
+
+    corte_id = _corte_para_abonos(client, "barbero_t35d")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barbero_t35e", RolModelo.BARBERO)
+    db.close()
+    respuesta = _abonar(
+        client, _token_para(client, "barbero_t35e"), corte_id, "cliente", 10
+    )
+    assert respuesta.status_code == 404
+
+
+def test_barbero_no_envia_momento_en_abono_400(client):
+    """T35 (RF-51): momento manual solo admin."""
+    corte_id = _corte_para_abonos(client, "barbero_t35f")
+    respuesta = _abonar(
+        client,
+        _token_para(client, "barbero_t35f"),
+        corte_id,
+        "cliente",
+        10,
+        {"momento_real": "2020-01-01T00:00:00"},
+    )
+    assert respuesta.status_code == 400
+
+
+def _saldos(client, token, corte_id):
+    return client.get(
+        f"/api/cortes/{corte_id}/saldos",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+
+def test_abono_no_mueve_otro_concepto(client):
+    """T36 (RF-18/19): abono cliente no altera saldo comisión y viceversa."""
+    corte_id = _corte_para_abonos(client, "barbero_t36")
+    token = _token_para(client, "barbero_t36")
+
+    assert _abonar(client, token, corte_id, "cliente", 40).status_code == 201
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["abonado"] == "40.00"
+    assert saldos["cliente"]["restante"] == "60.00"
+    assert saldos["cliente"]["estado"] == "parcial"
+    assert saldos["comision"]["abonado"] == "0.00"
+    assert saldos["comision"]["restante"] == "50.00"
+    assert saldos["comision"]["estado"] == "pendiente"
+
+    assert _abonar(client, token, corte_id, "comision", 50).status_code == 201
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["comision"]["estado"] == "pagado"
+    assert saldos["cliente"]["restante"] == "60.00"
+
+
+def test_saldar_restante_exacta_paga_sin_flags(client):
+    """T36 (RF-20): saldar el restante exacto cambia a pagado; no hay endpoint de pagado."""
+    corte_id = _corte_para_abonos(client, "barbero_t36b")
+    token = _token_para(client, "barbero_t36b")
+
+    assert _abonar(client, token, corte_id, "cliente", 100).status_code == 201
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["estado"] == "pagado"
+    assert saldos["cliente"]["restante"] == "0.00"
+
+    assert "parte_barberia" not in saldos["cliente"]
+    assert "parte_barberia" not in saldos["comision"]
+    r = client.post(
+        f"/api/cortes/{corte_id}/pagar", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert r.status_code in (404, 405)
+
+
+def test_matriz_pendiente_parcial_pagado(client):
+    """T37: 0 → pendiente; 30 → parcial/70; 30+70 → pagado/0."""
+    corte_id = _corte_para_abonos(client, "barbero_t37")
+    token = _token_para(client, "barbero_t37")
+
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["estado"] == "pendiente"
+    assert saldos["cliente"]["abonado"] == "0.00"
+    assert saldos["cliente"]["restante"] == "100.00"
+
+    assert _abonar(client, token, corte_id, "cliente", 30).status_code == 201
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["estado"] == "parcial"
+    assert saldos["cliente"]["abonado"] == "30.00"
+    assert saldos["cliente"]["restante"] == "70.00"
+
+    assert _abonar(client, token, corte_id, "cliente", 70).status_code == 201
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["estado"] == "pagado"
+    assert saldos["cliente"]["abonado"] == "100.00"
+    assert saldos["cliente"]["restante"] == "0.00"
+
+
+def _registrar_con_cobro(client, token, servicio_id, cobro, importe=None):
+    body = {
+        "servicio_id": servicio_id,
+        "metodo_pago": "efectivo",
+        "cobro_inicial": cobro,
+    }
+    if importe is not None:
+        body["importe_cobro"] = importe
+    return client.post(
+        "/api/cortes/", json=body, headers={"Authorization": f"Bearer {token}"}
+    )
+
+
+def test_cobro_inicial_pendiente_sin_abono(client):
+    """T38: pendiente no crea abono."""
+    from app.models.finanzas_corte import MovimientoCorte
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t38a", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+
+    r = _registrar_con_cobro(client, _token_para(client, "barbero_t38a"), servicio_id, "pendiente")
+    assert r.status_code == 201
+    db = TestingSessionLocal()
+    assert db.query(MovimientoCorte).count() == 0
+    db.close()
+
+
+def test_cobro_inicial_parcial_y_completo(client):
+    """T38: parcial crea el importe real; completo, el precio mostrado."""
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t38b", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+    token = _token_para(client, "barbero_t38b")
+
+    r = _registrar_con_cobro(client, token, servicio_id, "parcial", 40)
+    assert r.status_code == 201
+    saldos = _saldos(client, token, r.json()["id"]).json()
+    assert saldos["cliente"]["abonado"] == "40.00"
+    assert saldos["comision"]["estado"] == "pendiente"
+
+    r = _registrar_con_cobro(client, token, servicio_id, "completo")
+    assert r.status_code == 201
+    saldos = _saldos(client, token, r.json()["id"]).json()
+    assert saldos["cliente"]["abonado"] == "100.00"
+    assert saldos["cliente"]["estado"] == "pagado"
+    assert saldos["comision"]["estado"] == "pendiente"
+
+
+def test_cobro_parcial_sin_importe_400(client):
+    """T38: parcial exige importe."""
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t38c", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+
+    r = _registrar_con_cobro(client, _token_para(client, "barbero_t38c"), servicio_id, "parcial")
+    assert r.status_code == 400
+
+
+def test_abono_mayor_al_restante_400(client):
+    """T39: exceso online se rechaza sin crear movimiento."""
+    from app.models.finanzas_corte import MovimientoCorte
+
+    corte_id = _corte_para_abonos(client, "barbero_t39")
+    token = _token_para(client, "barbero_t39")
+    assert _abonar(client, token, corte_id, "cliente", 60).status_code == 201
+    assert _abonar(client, token, corte_id, "cliente", 50).status_code == 400
+    db = TestingSessionLocal()
+    assert db.query(MovimientoCorte).count() == 1
+    db.close()
+
+
+def test_corte_bloqueado_desde_primer_abono(client):
+    """T39 (RF-23/25 base): bloqueo calculado desde el primer pago."""
+    from decimal import Decimal as DecimalT39
+    from app.models.corte import MetodoPago as MetodoT39
+    from app.models.finanzas_corte import ConceptoMovimiento as ConceptoT39
+    from app.services.corte_service import crear_corte as crear_corte_t39
+    from app.services.movimiento_corte_service import (
+        corte_bloqueado,
+        registrar_abono,
+    )
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t39b", Decimal("50"), Decimal("100.00"))
+    actor = db.query(Usuario).filter(Usuario.usuario == "barbero_t39b").first()
+    servicio_id = db.query(Servicio).first().id
+    corte = crear_corte_t39(db, actor, servicio_id, "efectivo")
+    assert corte_bloqueado(db, corte) is False
+    registrar_abono(
+        db,
+        autor=actor,
+        corte=corte,
+        concepto=ConceptoT39.CLIENTE,
+        importe=DecimalT39("10"),
+        metodo=MetodoT39.EFECTIVO,
+    )
+    assert corte_bloqueado(db, corte) is True
+    db.close()
+
+
+def test_movimientos_respetan_privacidad(client):
+    """T40: ajeno → 404; respuestas propias sin datos del negocio."""
+    from app.models.usuario import Rol as RolModelo
+
+    corte_id = _corte_para_abonos(client, "barbero_t40")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barbero_t40b", RolModelo.BARBERO)
+    db.close()
+    token_ajeno = _token_para(client, "barbero_t40b")
+
+    assert _abonar(client, token_ajeno, corte_id, "cliente", 10).status_code == 404
+    assert _saldos(client, token_ajeno, corte_id).status_code == 404
+
+    token = _token_para(client, "barbero_t40")
+    assert _abonar(client, token, corte_id, "cliente", 10).status_code == 201
+    assert _sin_campos_prohibidos(_saldos(client, token, corte_id).json()) == []
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t40", RolModelo.ADMIN)
+    db.close()
+    assert _abonar(client, _token_para(client, "admin_t40"), corte_id, "cliente", 10).status_code == 201
+
+
 def test_reintentos_agotados_sin_efecto_residual(client):
     """P2-3 paquete 5: contención persistente → ReintentosAgotados, sin filas."""
     from app.models.operacion_corte import OperacionCorte

@@ -12,6 +12,11 @@ from app.models.operacion_corte import (
     EstadoOperacion,
     ModoCaptura,
 )
+from app.models.finanzas_corte import (
+    MovimientoCorte,
+    ConceptoMovimiento,
+    TipoMovimiento,
+)
 
 __all__ = [
     "Usuario",
@@ -27,4 +32,7 @@ __all__ = [
     "OperacionCorte",
     "EstadoOperacion",
     "ModoCaptura",
+    "MovimientoCorte",
+    "ConceptoMovimiento",
+    "TipoMovimiento",
 ]

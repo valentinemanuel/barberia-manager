@@ -8,8 +8,15 @@ from app.database import get_db
 from app.dependencies import requerir_admin, obtener_usuario_actual
 from app.models.corte import Corte
 from app.models.usuario import Usuario, Rol
-from app.schemas.corte import CorteCrear, CorteResponse, CortePersonal
+from app.schemas.corte import (
+    CobroInicial,
+    CorteCrear,
+    CorteResponse,
+    CortePersonal,
+)
 from app.services.corte_service import crear_corte
+from app.services.movimiento_corte_service import registrar_abono
+from app.models.finanzas_corte import ConceptoMovimiento
 from app.services.operacion_corte_service import (
     ConflictoIdentidad,
     ReintentosAgotados,
@@ -111,6 +118,27 @@ def registrar_corte(
                 db, actor, datos.servicio_id, datos.metodo_pago, destino, momento
             )
             creado_id = creado.id
+            # Cobro inicial en la misma UoW (RF-37); nunca marca comisión.
+            if datos.cobro_inicial == CobroInicial.PARCIAL:
+                if datos.importe_cobro is None:
+                    raise ValueError("El cobro parcial requiere importe")
+                registrar_abono(
+                    db,
+                    autor=actor,
+                    corte=creado,
+                    concepto=ConceptoMovimiento.CLIENTE,
+                    importe=datos.importe_cobro,
+                    metodo=datos.metodo_pago,
+                )
+            elif datos.cobro_inicial == CobroInicial.COMPLETO:
+                registrar_abono(
+                    db,
+                    autor=actor,
+                    corte=creado,
+                    concepto=ConceptoMovimiento.CLIENTE,
+                    importe=creado.precio,
+                    metodo=datos.metodo_pago,
+                )
             return {"corte_id": creado.id, "estado": "aceptada"}
 
         if datos.operacion_uuid is None:
@@ -136,6 +164,12 @@ def registrar_corte(
                             ),
                             "momento_real": (
                                 "" if datos.momento_real is None else datos.momento_real.isoformat()
+                            ),
+                            "cobro_inicial": (
+                                "" if datos.cobro_inicial is None else str(datos.cobro_inicial)
+                            ),
+                            "importe_cobro": (
+                                "" if datos.importe_cobro is None else str(datos.importe_cobro)
                             ),
                         },
                         modo="online",
