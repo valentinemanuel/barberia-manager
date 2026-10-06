@@ -31,10 +31,10 @@ def dashboard_admin(
     ganancias_semana = _calcular_ganancias(db, inicio_semana)
     ganancias_mes = _calcular_ganancias(db, inicio_mes)
 
-    # Cortes por período
-    cortes_dia = db.query(Corte).filter(Corte.fecha >= inicio_dia).count()
-    cortes_semana = db.query(Corte).filter(Corte.fecha >= inicio_semana).count()
-    cortes_mes = db.query(Corte).filter(Corte.fecha >= inicio_mes).count()
+    # Cortes por período (solo vigentes: anulados fuera del devengado RF-27)
+    cortes_dia = db.query(Corte).filter(Corte.fecha >= inicio_dia, Corte.anulado_en.is_(None)).count()
+    cortes_semana = db.query(Corte).filter(Corte.fecha >= inicio_semana, Corte.anulado_en.is_(None)).count()
+    cortes_mes = db.query(Corte).filter(Corte.fecha >= inicio_mes, Corte.anulado_en.is_(None)).count()
 
     # Top barberos
     top_barberos = (
@@ -48,7 +48,7 @@ def dashboard_admin(
             func.sum(Corte.parte_barberia).label("parte_barberia"),
         )
         .join(Corte, Usuario.id == Corte.barbero_id)
-        .filter(Usuario.rol == Rol.BARBERO, Corte.fecha >= inicio_mes)
+        .filter(Usuario.rol == Rol.BARBERO, Corte.fecha >= inicio_mes, Corte.anulado_en.is_(None))
         .group_by(Usuario.id)
         .order_by(func.count(Corte.id).desc())
         .limit(5)
@@ -105,7 +105,7 @@ def reporte_dia(
     inicio = datetime(fecha_obj.year, fecha_obj.month, fecha_obj.day)
     fin = inicio + timedelta(days=1)
 
-    cortes = db.query(Corte).filter(Corte.fecha >= inicio, Corte.fecha < fin).all()
+    cortes = db.query(Corte).filter(Corte.fecha >= inicio, Corte.fecha < fin, Corte.anulado_en.is_(None)).all()
     ventas = db.query(Venta).filter(Venta.fecha >= inicio, Venta.fecha < fin).all()
     gastos = db.query(Gasto).filter(Gasto.fecha >= inicio, Gasto.fecha < fin).all()
 
@@ -129,7 +129,7 @@ def reporte_dia(
 
 def _calcular_ganancias(db: Session, inicio: datetime) -> Decimal:
     """Calcula ganancias totales desde una fecha."""
-    cortes = db.query(Corte).filter(Corte.fecha >= inicio).all()
+    cortes = db.query(Corte).filter(Corte.fecha >= inicio, Corte.anulado_en.is_(None)).all()
     ventas = db.query(Venta).filter(Venta.fecha >= inicio).all()
     gastos = db.query(Gasto).filter(Gasto.fecha >= inicio).all()
 

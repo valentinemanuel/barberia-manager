@@ -1501,6 +1501,49 @@ def test_admin_corrige_bloqueado_exige_motivo(client):
     assert r.json()["anulado_en"] is not None
 
 
+def test_anulado_fuera_de_devengado(client):
+    """T47: el anulado no cuenta en reportes de devengado."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t47", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "admin_t47", RolModelo.ADMIN)
+    db.close()
+
+    _login_y_registrar_corte(client, "barbero_t47", servicio_id)
+    r2 = _login_y_registrar_corte(client, "barbero_t47", servicio_id)
+    _anular_corte(client, _token_para(client, "barbero_t47"), r2.json()["id"])
+
+    dashboard = client.get(
+        "/api/reportes/dashboard",
+        headers={"Authorization": f"Bearer {_token_para(client, 'admin_t47')}"},
+    )
+    assert dashboard.status_code == 200
+    assert dashboard.json()["cortes_hoy"] == 1
+
+
+def test_sin_abonos_al_anulado_y_movimientos_conservados(client):
+    """T47 (RF-46 parcial): sin abonos ordinarios al anulado; previos visibles."""
+    from app.models.usuario import Rol as RolModelo
+
+    corte_id = _corte_para_abonos(client, "barbero_t47b")
+    token = _token_para(client, "barbero_t47b")
+    assert _abonar(client, token, corte_id, "cliente", 30).status_code == 201
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t47b", RolModelo.ADMIN)
+    db.close()
+    r = _anular_corte(
+        client, _token_para(client, "admin_t47b"), corte_id, motivo="cierre con abono"
+    )
+    assert r.status_code == 200
+
+    assert _abonar(client, token, corte_id, "cliente", 10).status_code == 409
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["abonado"] == "30.00"
+
+
 def test_abono_mayor_al_restante_400(client):
     """T39: exceso online se rechaza sin crear movimiento."""
     from app.models.finanzas_corte import MovimientoCorte

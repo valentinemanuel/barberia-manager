@@ -590,7 +590,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-22–27, RF-42, RF-46 
   - Implementar: `motivo` obligatorio para admin en bloqueado/anulado; persistencia en columnas de anulación (edición admin: motivo exigido pero valores anteriores visibles en fila; journal completo en paquete de auditoría).
   - Hecho cuando: tests en verde y ninguna corrección admin sin motivo persiste.
 
-- [ ] **T47. Anulado fuera de devengado y sin nuevos abonos.** RF-27/RF-46 (parciales).
+- [x] **T47. Anulado fuera de devengado y sin nuevos abonos.** RF-27/RF-46 (parciales).
   - Dependencias: T45.
   - Tests primero: reportes no cuentan el anulado; abono ordinario al anulado → 409; movimientos previos siguen consultables.
   - Implementar: filtro `anulado_en IS NULL` en reportes de devengado (cambio mínimo) + rechazo de abonos al anulado en `registrar_abono` o router (decidir el punto exacto sin romper sync: sync legacy sin abonos no afectado).
@@ -616,6 +616,6 @@ Aprobación recibida: alcance aprobado por el usuario (RF-22–27, RF-42, RF-46 
 | T44 | Rojo real: barbero editaba bloqueado (200 en vez de 409) | Verde: `63 passed` (2 archivos) | DB estable; solo `routers/cortes.py` + `test_cortes.py`. Cambio: enforcement con `corte_bloqueado()` en PATCH (solo barbero; admin 200); abono posterior sigue 201 (RF-25). Nota honesta: el 409 de POST anular va en T45 (la ruta aún no existe). |
 | T45 | Rojo real: doble 404 (sin ruta anular) | Verde: `88 passed` (3 archivos) | DB estable; `edicion_corte_service.py` (`anular_corte`) + `schemas/corte.py` (`CorteAnular`, marca en ambos DTOs) + `routers/cortes.py` (POST anular + check en PATCH) + `test_cortes.py`. Cambio: barbero anula propio no bloqueado; bloqueado → 409 (cierra split T44); anulado → 409 siempre (sin reactivación); marca visible en historial. |
 | T46 | Rojo real: admin editaba bloqueado sin motivo (200 en vez de 400) | Verde: `66 passed` (2 archivos) | DB estable; `schemas/corte.py` (`motivo` en `CorteEditar`) + `routers/cortes.py` + `test_cortes.py`. Cambio: motivo obligatorio admin en bloqueado (edición y anulación); anulación lo persiste (autor/momento/motivo), edición lo exige sin journal (auditoría futura). Migración honesta: test T44 actualizado al contrato nuevo. |
-| T47 |  |  |  |
+| T47 | Rojo real: doble (anulado contado en dashboard; abono al anulado 201) | Verde: `91 passed` (3 archivos) | DB estable; `reportes.py` (6 filtros `anulado_en IS NULL`: conteos, top, día, ganancias) + `movimientos_corte.py` (409 al anulado) + `test_cortes.py`. Cambio mínimo sin reinterpretar cierres legacy. Dinero abonado conservado y consultable. |
 | T48 |  |  |  |
 | T49 |  |  |  |
