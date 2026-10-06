@@ -1,19 +1,9 @@
-from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models.corte import Corte
 from app.models.servicio import Servicio
 from app.models.usuario import Usuario
-
-
-def calcular_partes(precio: Decimal, porcentaje_barbero: Decimal) -> tuple[Decimal, Decimal]:
-    """
-    Calcula la parte del barbero y la barbero.
-    El porcentaje se aplica SOLO al servicio (corte).
-    """
-    parte_barbero = (precio * porcentaje_barbero / Decimal("100")).quantize(Decimal("0.01"))
-    parte_barberia = (precio - parte_barbero).quantize(Decimal("0.01"))
-    return parte_barbero, parte_barberia
+from app.services.dinero_cortes import calcular_partes
 
 
 def crear_corte(

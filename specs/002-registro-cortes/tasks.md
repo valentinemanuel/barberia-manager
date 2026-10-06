@@ -125,7 +125,7 @@ python -m pytest tests/test_sync_roles.py tests/test_roles_permisos.py -q
 
 ### Tareas en orden de dependencia
 
-- [ ] **T7. Conectar el reparto puro al registro y eliminar el duplicado.** RF-3/RF-4 (parciales), RNF-1.
+- [x] **T7. Conectar el reparto puro al registro y eliminar el duplicado.** RF-3/RF-4 (parciales), RNF-1.
   - Dependencias: ninguna dentro del paquete; reutiliza `dinero_cortes` cerrado sin modificarlo.
   - Tests primero: POST `/cortes/` con servicio 100.00 y barbero 50% responde `"50.00"`/`"50.00"` exactos; caso servicio 0.05 al 50% → `0.03`/`0.02` (ROUND_HALF_UP y resto exacto, no HALF_EVEN ni doble quantize).
   - Implementar: `crear_corte` usa `dinero_cortes.calcular_partes`; eliminar el `calcular_partes` local de `corte_service.py`.
@@ -168,7 +168,7 @@ python -m pytest tests/test_sync_roles.py tests/test_roles_permisos.py -q
 
 | Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
 |---|---|---|---|
-| T7 |  |  |  |
+| T7 | Rojo real: `1 failed, 2 passed`; `AssertionError: assert '0.02' == '0.03'` en `test_crear_corte_redondeo_matematico_mitad_hacia_arriba` (quantize del contexto HALF_EVEN antes del fix) | Verde: `3 passed` en `tests/test_cortes.py` + `167 passed` suite aislada paquete 1 | Desde `backend`: `python -m pytest tests/test_cortes.py -q` y comando aislado del paquete 1. `barberia.db` hash idéntico antes/después (`3fe8caa6…f924a9`); `git status` solo `corte_service.py` + `test_cortes.py`. Cambio: `crear_corte` importa `dinero_cortes.calcular_partes`, eliminado duplicado local e import Decimal sin uso. |
 | T8 |  |  |  |
 | T9 |  |  |  |
 | T10 |  |  |  |
