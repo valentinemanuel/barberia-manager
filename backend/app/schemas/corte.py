@@ -2,6 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from pydantic import BaseModel, Field
 from typing import Optional
+from uuid import UUID
 
 from app.models.corte import MetodoPago
 
@@ -16,6 +17,8 @@ class CorteCrear(CorteBase):
     barbero_id: Optional[int] = None
     # Solo admin: momento real retroactivo (nunca futuro). Barbero → 400.
     momento_real: Optional[datetime] = None
+    # Idempotencia opcional (paquete 5): sin UUID → camino legacy intacto.
+    operacion_uuid: Optional[UUID] = None
 
 
 class CorteResponse(BaseModel):
