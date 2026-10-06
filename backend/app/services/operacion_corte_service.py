@@ -33,6 +33,11 @@ class ConflictoIdentidad(ValueError):
     """Misma clave con distinto contenido: se rechaza sin efecto (HTTP 409)."""
 
 
+class ReintentosAgotados(ValueError):
+    """Contención persistente tras MAX_INTENTOS: error 5xx reintentable,
+    nunca 400/409 (el problema es del servidor, no del pedido)."""
+
+
 def ejecutar_operacion(
     db: Session,
     *,
@@ -83,4 +88,6 @@ def ejecutar_operacion(
             # y reintentar desde el lookup (que encontrará su acuse).
             db.rollback()
             continue
-    raise ValueError("No se pudo registrar la operación por contención; reintente")
+    raise ReintentosAgotados(
+        "No se pudo registrar la operación por contención; reintente"
+    )

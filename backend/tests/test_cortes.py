@@ -1092,3 +1092,27 @@ def test_sync_reenvio_con_uuid_no_duplica(client):
     db = TestingSessionLocal()
     assert db.query(CorteModelo).count() == 1
     db.close()
+
+
+def test_reintentos_agotados_sin_efecto_residual(client):
+    """P2-3 paquete 5: contención persistente → ReintentosAgotados, sin filas."""
+    from app.models.operacion_corte import OperacionCorte
+    from app.services.operacion_corte_service import (
+        ReintentosAgotados,
+        ejecutar_operacion,
+    )
+
+    db = TestingSessionLocal()
+    with pytest.raises(ReintentosAgotados):
+        ejecutar_operacion(
+            db,
+            actor_id=1,
+            namespace="web",
+            operacion_id=None,
+            accion="crear_corte",
+            payload={"a": "b"},
+            modo="online",
+            ejecutar=lambda: {"estado": "aceptada"},
+        )
+    assert db.query(OperacionCorte).count() == 0
+    db.close()

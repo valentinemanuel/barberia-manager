@@ -12,6 +12,7 @@ from app.schemas.corte import CorteCrear, CorteResponse, CortePersonal
 from app.services.corte_service import crear_corte
 from app.services.operacion_corte_service import (
     ConflictoIdentidad,
+    ReintentosAgotados,
     ejecutar_operacion,
 )
 
@@ -153,6 +154,8 @@ def registrar_corte(
                 )
         db.refresh(corte)
         return corte
+    except ReintentosAgotados as e:
+        raise HTTPException(status_code=500, detail=str(e))
     except ConflictoIdentidad as e:
         raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:

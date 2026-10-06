@@ -342,7 +342,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-1/RF-2/RF-8/RF-10 onli
 
 ## Paquete 5 — Idempotencia y reintentos seguros
 
-Estado: **tareas redactadas, pendientes de aprobación para implementar**. Paquetes 1–4 cerrados, no rehacer.
+Estado: **implementado (T26–T33 en verde) y aprobado por `sdd-reviewer`; pendiente integración a `dev` vía PR**. Paquetes 1–4 cerrados, no rehacer.
 
 Aprobación recibida: alcance aprobado por el usuario (RF-32 + base RF-30). No se autoriza implementación por esta redacción.
 
@@ -379,7 +379,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-32 + base RF-30). No s
   - Dependencias: T26.
   - Tests primero: primera ejecución con clave+hash crea y devuelve resultado; segunda con misma clave + mismo hash devuelve el acuse guardado sin reejecutar (el efecto ocurre una sola vez: un solo corte en DB).
   - Implementar: `operacion_corte_service.ejecutar` (lookup por clave; si existe y hash coincide → acuse; si no → ejecuta callback en la misma UoW, guarda resultado, un commit).
-  - Hecho cuando: doble llamada con distintos hilos/sesiones deja un solo efecto y el mismo acuse; tests con DBs locales.
+  - Hecho cuando: doble llamada secuencial deja un solo efecto y el mismo acuse; tests con DBs locales (la concurrencia real con hilos la cubre T31).
 
 - [x] **T28. Camino idempotente en POST /cortes.** RF-30/RF-32 (parciales), RNF-3.
   - Dependencias: T27.

@@ -9,7 +9,10 @@ from app.dependencies import oauth2_scheme, verificar_token
 from app.models.corte import MetodoPago
 from app.models.usuario import Rol, Usuario
 from app.services.corte_service import crear_corte
-from app.services.operacion_corte_service import ejecutar_operacion
+from app.services.operacion_corte_service import (
+    ReintentosAgotados,
+    ejecutar_operacion,
+)
 
 router = APIRouter(prefix="/api/sync", tags=["Sincronización"])
 
@@ -156,6 +159,16 @@ def sincronizar_operaciones(
                 accion=op.accion,
                 aceptada=True,
                 status_code=201,
+            ))
+        except ReintentosAgotados as e:
+            db.rollback()
+            resultados.append(ResultadoOperacion(
+                id=op.id,
+                accion=op.accion,
+                aceptada=False,
+                status_code=500,
+                motivo=str(e),
+                notificacion="Contención del servidor; reintentá el lote.",
             ))
         except (ValueError, KeyError) as e:
             resultados.append(ResultadoOperacion(
