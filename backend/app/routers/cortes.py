@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -63,11 +63,36 @@ def obtener_corte(
 def registrar_corte(
     datos: CorteCrear,
     db: Session = Depends(get_db),
-    barbero: Usuario = Depends(obtener_usuario_actual)
+    actor: Usuario = Depends(obtener_usuario_actual)
 ):
-    """Registra un nuevo corte."""
+    """Registra un nuevo corte (propio; el admin puede indicar destinatario)."""
     try:
-        corte = crear_corte(db, barbero, datos.servicio_id, datos.metodo_pago)
+        destino = actor
+        if datos.barbero_id is not None:
+            if actor.rol != Rol.ADMIN:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Solo un admin puede registrar cortes para otro barbero",
+                )
+            destino = db.query(Usuario).filter(Usuario.id == datos.barbero_id).first()
+            if not destino:
+                raise HTTPException(status_code=404, detail="Barbero no encontrado")
+        momento = datos.momento_real
+        if momento is not None:
+            if actor.rol != Rol.ADMIN:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Solo un admin puede indicar el momento real",
+                )
+            if momento.tzinfo is not None:
+                momento = momento.astimezone(timezone.utc).replace(tzinfo=None)
+            if momento > datetime.utcnow():
+                raise HTTPException(
+                    status_code=400, detail="El momento real no puede ser futuro"
+                )
+        corte = crear_corte(
+            db, actor, datos.servicio_id, datos.metodo_pago, destino, momento
+        )
         db.commit()
         db.refresh(corte)
         return corte
