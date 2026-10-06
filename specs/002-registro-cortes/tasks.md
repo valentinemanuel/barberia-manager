@@ -381,7 +381,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-32 + base RF-30). No s
   - Implementar: `operacion_corte_service.ejecutar` (lookup por clave; si existe y hash coincide → acuse; si no → ejecuta callback en la misma UoW, guarda resultado, un commit).
   - Hecho cuando: doble llamada con distintos hilos/sesiones deja un solo efecto y el mismo acuse; tests con DBs locales.
 
-- [ ] **T28. Camino idempotente en POST /cortes.** RF-30/RF-32 (parciales), RNF-3.
+- [x] **T28. Camino idempotente en POST /cortes.** RF-30/RF-32 (parciales), RNF-3.
   - Dependencias: T27.
   - Tests primero: POST con `operacion_uuid` dos veces → 201 ambas con el mismo `id` de corte y un solo corte en DB; POST sin UUID → comportamiento legacy intacto (regression de paquetes 2–4).
   - Implementar: `operacion_uuid: Optional[UUID]` en `CorteCrear`; el router usa el ejecutor solo si viene UUID (namespace `"web"`).
@@ -421,7 +421,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-32 + base RF-30). No s
 |---|---|---|---|
 | T26 | Rojo real: `history` mostraba solo `001` | Verde: `history` con `002`; TEMP vacía crea solo `operaciones_corte` (+`alembic_version`); TEMP legacy intacta + tabla nueva; repetir no-op | `upgrade` solo en TEMP (`ALEMBIC_SQLALCHEMY_URL`); `barberia.db` hash idéntico (`3fe8caa6…f924a9`); prohibido aplicar contra base real. Modelo + `__init__` + revisión `002`. |
 | T27 | Rojo real: `ModuleNotFoundError: app.services.operacion_corte_service` | Verde: replay mismo hash → mismo acuse + 1 solo corte | Ejecutor con hash canónico, replay sin reejecutar, sin commit (UoW del llamador). DIVULGACIÓN: el hash de `barberia.db` cambió una vez (`3fe8caa6…` → `b691f8c5…`) porque el `create_all` histórico (gate 9) creó la tabla vacía `operaciones_corte` al importar la app en tests; verificado: 0 filas nuevas, legacy intacto (1 admin, resto vacío), `create_all` no escribe filas por construcción. Robustez añadida: `002` salta creación si la tabla existe (verificado en TEMP con `create_all` previo). |
-| T28 |  |  |  |
+| T28 | Rojo real: doble POST con misma UUID creó 2 cortes (`assert 1 == 2`) | Verde: `38 passed` (2 archivos) | Desde `backend`: pytest por archivo. DB estable en baseline T27 (`b691f8c5…`, tabla vacía por `create_all` histórico); solo `schemas/corte.py` + `routers/cortes.py` + `test_cortes.py`. Cambio: `operacion_uuid` opcional (UUID→422 automático), ejecutor con namespace `web` y payload de strings; sin UUID el camino no cambia ni un byte (misma llamada). Solo se guarda estado aceptado; registrar rechazos queda para paquete 6. |
 | T29 |  |  |  |
 | T30 |  |  |  |
 | T31 |  |  |  |

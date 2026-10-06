@@ -898,3 +898,43 @@ def test_operacion_replay_devuelve_acuse_sin_reejecutar(client):
     assert acuse1["estado"] == "aceptada"
     assert db.query(Corte).count() == 1
     db.close()
+
+
+def test_post_doble_uuid_mismo_corte(client):
+    """T28: doble POST con misma operacion_uuid → mismo id, un solo corte."""
+    import uuid as uuid_lib
+    from app.models.corte import Corte as CorteModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t28", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+
+    token = _token_para(client, "barbero_t28")
+    op_id = str(uuid_lib.uuid4())
+    body = {
+        "servicio_id": servicio_id,
+        "metodo_pago": "efectivo",
+        "operacion_uuid": op_id,
+    }
+    r1 = client.post("/api/cortes/", json=body, headers={"Authorization": f"Bearer {token}"})
+    r2 = client.post("/api/cortes/", json=body, headers={"Authorization": f"Bearer {token}"})
+    assert r1.status_code == 201
+    assert r2.status_code == 201
+    assert r1.json()["id"] == r2.json()["id"]
+
+    db = TestingSessionLocal()
+    assert db.query(CorteModelo).count() == 1
+    db.close()
+
+
+def test_post_sin_uuid_camino_legacy_intacto(client):
+    """T28: sin UUID el registro funciona como siempre (RNF-3)."""
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t28b", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+
+    respuesta = _login_y_registrar_corte(client, "barbero_t28b", servicio_id)
+    assert respuesta.status_code == 201
+    assert respuesta.json()["parte_barbero"] == "50.00"

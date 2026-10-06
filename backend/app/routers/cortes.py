@@ -9,6 +9,7 @@ from app.models.corte import Corte
 from app.models.usuario import Usuario, Rol
 from app.schemas.corte import CorteCrear, CorteResponse, CortePersonal
 from app.services.corte_service import crear_corte
+from app.services.operacion_corte_service import ejecutar_operacion
 
 router = APIRouter(prefix="/api/cortes", tags=["Cortes"])
 
@@ -96,9 +97,41 @@ def registrar_corte(
                 raise HTTPException(
                     status_code=400, detail="El momento real no puede ser futuro"
                 )
-        corte = crear_corte(
-            db, actor, datos.servicio_id, datos.metodo_pago, destino, momento
-        )
+
+        creado_id: int | None = None
+
+        def _efecto() -> dict:
+            nonlocal creado_id
+            creado = crear_corte(
+                db, actor, datos.servicio_id, datos.metodo_pago, destino, momento
+            )
+            creado_id = creado.id
+            return {"corte_id": creado.id, "estado": "aceptada"}
+
+        if datos.operacion_uuid is None:
+            _efecto()
+            corte = db.query(Corte).filter(Corte.id == creado_id).first()
+        else:
+            acuse = ejecutar_operacion(
+                db,
+                actor_id=actor.id,
+                namespace="web",
+                operacion_id=str(datos.operacion_uuid),
+                accion="crear_corte",
+                payload={
+                    "servicio_id": str(datos.servicio_id),
+                    "metodo_pago": str(datos.metodo_pago),
+                    "barbero_id": (
+                        "" if datos.barbero_id is None else str(datos.barbero_id)
+                    ),
+                    "momento_real": (
+                        "" if datos.momento_real is None else datos.momento_real.isoformat()
+                    ),
+                },
+                modo="online",
+                ejecutar=_efecto,
+            )
+            corte = db.query(Corte).filter(Corte.id == acuse["corte_id"]).first()
         db.commit()
         db.refresh(corte)
         return corte
