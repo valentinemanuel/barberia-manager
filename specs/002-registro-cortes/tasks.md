@@ -285,7 +285,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-1/RF-2/RF-8/RF-10 onli
 
 ### Tareas en orden de dependencia
 
-- [ ] **T20. Destino admin en el registro.** RF-1/RF-2 (parciales), RF-56 (parcial).
+- [x] **T20. Destino admin en el registro.** RF-1/RF-2 (parciales), RF-56 (parcial).
   - Dependencias: ninguna dentro del paquete.
   - Tests primero: admin registra con `barbero_id` de otro → 201 asociado al destino con su porcentaje; `barbero_id` inexistente → 404; barbero que envía `barbero_id` (incluso propio) → 403; destino inactivo con porcentaje → 201.
   - Implementar: `barbero_id: Optional[int]` en `CorteCrear`; `crear_corte` resuelve destinatario (propio por defecto); router exige rol admin si viene destino.
@@ -323,7 +323,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-1/RF-2/RF-8/RF-10 onli
 
 | Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
 |---|---|---|---|
-| T20 |  |  |  |
+| T20 | Rojo real: 4 failed (el body ignoraba `barbero_id`; sin 403/404) | Verde: `26 passed` (`test_cortes.py` + `test_sync_roles.py`) | Desde `backend`: pytest por archivo. `barberia.db` hash idéntico; solo `schemas/corte.py` + `corte_service.py` + `routers/cortes.py` + `test_cortes.py`. Cambio: `barbero_id` opcional solo admin (403 barbero, 404 inexistente, inactivo con % permitido); reparto con valores del destinatario; registro propio intacto; sync sin destino sigue propio. |
 | T21 |  |  |  |
 | T22 |  |  |  |
 | T23 |  |  |  |

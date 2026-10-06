@@ -569,3 +569,85 @@ def test_contratos_personales_sin_datos_del_negocio(client):
         resumen = client.get(f"/api/cortes{ruta}", headers=auth)
         assert resumen.status_code == 200
         assert _sin_campos_prohibidos(resumen.json()) == []
+
+
+def _registrar_corte_admin(client, token_admin, servicio_id, destino_id):
+    return client.post(
+        "/api/cortes/",
+        json={
+            "servicio_id": servicio_id,
+            "metodo_pago": "efectivo",
+            "barbero_id": destino_id,
+        },
+        headers={"Authorization": f"Bearer {token_admin}"},
+    )
+
+
+def test_registro_admin_para_otro_barbero(client):
+    """T20: el admin registra para otro barbero con el porcentaje del destino."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t20a", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "admin_t20", RolModelo.ADMIN, Decimal("0"))
+    dest_id = db.query(Usuario).filter(Usuario.usuario == "barbero_t20a").first().id
+    db.close()
+
+    respuesta = _registrar_corte_admin(
+        client, _token_para(client, "admin_t20"), servicio_id, dest_id
+    )
+    assert respuesta.status_code == 201
+    data = respuesta.json()
+    assert data["barbero_id"] == dest_id
+    assert data["parte_barbero"] == "50.00"
+
+
+def test_registro_destino_inexistente_404(client):
+    """T20: destino inexistente → 404 sin revelar nada."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t20b", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "admin_t20b", RolModelo.ADMIN, Decimal("0"))
+    db.close()
+
+    respuesta = _registrar_corte_admin(
+        client, _token_para(client, "admin_t20b"), servicio_id, 9999
+    )
+    assert respuesta.status_code == 404
+
+
+def test_barbero_no_puede_enviar_destino_403(client):
+    """T20: el barbero no puede enviar barbero_id, ni siquiera el propio."""
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t20c", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    propio_id = db.query(Usuario).filter(Usuario.usuario == "barbero_t20c").first().id
+    db.close()
+
+    respuesta = _registrar_corte_admin(
+        client, _token_para(client, "barbero_t20c"), servicio_id, propio_id
+    )
+    assert respuesta.status_code == 403
+
+
+def test_registro_destino_inactivo_con_porcentaje_201(client):
+    """T20 (RF-56): destino inactivo con porcentaje → 201."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t20d", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "admin_t20d", RolModelo.ADMIN, Decimal("0"))
+    db.query(Usuario).filter(Usuario.usuario == "barbero_t20d").update({"activo": False})
+    db.commit()
+    dest_id = db.query(Usuario).filter(Usuario.usuario == "barbero_t20d").first().id
+    db.close()
+
+    respuesta = _registrar_corte_admin(
+        client, _token_para(client, "admin_t20d"), servicio_id, dest_id
+    )
+    assert respuesta.status_code == 201
+    assert respuesta.json()["barbero_id"] == dest_id
