@@ -533,3 +533,39 @@ def test_detalle_ajeno_sigue_404(client):
         headers={"Authorization": f"Bearer {_token_para(client, 'barbero_t16c')}"},
     )
     assert detalle.status_code == 404
+
+
+CAMPOS_PROHIBIDOS_PERSONAL = ("parte_barberia", "costo", "margen", "bruto")
+
+
+def _sin_campos_prohibidos(respuesta_json) -> list:
+    """Devuelve los tokens prohibidos hallados (insensible a mayúsculas)."""
+    import json
+
+    texto = json.dumps(respuesta_json).lower()
+    return [campo for campo in CAMPOS_PROHIBIDOS_PERSONAL if campo in texto]
+
+
+def test_contratos_personales_sin_datos_del_negocio(client):
+    """T17: ningún contrato personal expone datos del negocio ni ajenos."""
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t17", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+
+    registro = _login_y_registrar_corte(client, "barbero_t17", servicio_id)
+    assert registro.status_code == 201
+    corte_id = registro.json()["id"]
+    auth = {"Authorization": f"Bearer {_token_para(client, 'barbero_t17')}"}
+
+    assert _sin_campos_prohibidos(registro.json()) == []
+    historial = client.get("/api/cortes/mi/historial", headers=auth)
+    assert historial.status_code == 200
+    assert _sin_campos_prohibidos(historial.json()) == []
+    detalle = client.get(f"/api/cortes/{corte_id}", headers=auth)
+    assert detalle.status_code == 200
+    assert _sin_campos_prohibidos(detalle.json()) == []
+    for ruta in ("/mi/resumen/dia", "/mi/resumen/semana", "/mi/resumen/mes"):
+        resumen = client.get(f"/api/cortes{ruta}", headers=auth)
+        assert resumen.status_code == 200
+        assert _sin_campos_prohibidos(resumen.json()) == []
