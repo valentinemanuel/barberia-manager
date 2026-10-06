@@ -213,7 +213,7 @@ Decisión del gate registrada: se crea el DTO personal `CortePersonal` (= `Corte
 
 ### Tareas en orden de dependencia
 
-- [ ] **T14. Crear el DTO personal sin parte de la barbería.** RF-11/RF-15 (parciales), RNF-3.
+- [x] **T14. Crear el DTO personal sin parte de la barbería.** RF-11/RF-15 (parciales), RNF-3.
   - Dependencias: ninguna dentro del paquete.
   - Tests primero: `CortePersonal` acepta un corte completo y su `.model_dump()` no contiene `parte_barberia`; `CorteResponse` sigue intacto con el campo (compat admin).
   - Implementar: agregar `CortePersonal` en `schemas/corte.py` (mismos campos menos `parte_barberia`); no modificar `CorteResponse`.
@@ -252,7 +252,7 @@ Decisión del gate registrada: se crea el DTO personal `CortePersonal` (= `Corte
 
 | Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
 |---|---|---|---|
-| T14 |  |  |  |
+| T14 | Rojo real: `ImportError: cannot import name 'CortePersonal'` | Verde: `14 passed` en `tests/test_cortes.py` | Desde `backend`: `python -m pytest tests/test_cortes.py -q`. Schema-level sin DB; `barberia.db` hash idéntico (`3fe8caa6…f924a9`); solo `schemas/corte.py` + `test_cortes.py`. Cambio: `CortePersonal` agregado, `CorteResponse` intacto. |
 | T15 |  |  |  |
 | T16 |  |  |  |
 | T17 |  |  |  |

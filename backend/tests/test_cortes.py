@@ -361,7 +361,6 @@ def _payload_servicio_crear(precio):
         "duracion_minutos": 30,
     }
 
-
 def test_servicio_rechaza_precio_con_mas_de_dos_decimales():
     """T8-bis: '10.005' se rechaza en la carga del catálogo (RF-41)."""
     from pydantic import ValidationError
@@ -379,3 +378,37 @@ def test_servicio_acepta_precio_canonico_sin_normalizar():
 
     assert ServicioCrear(**_payload_servicio_crear("100.00")).precio == Decimal("100.00")
     assert ServicioCrear(**_payload_servicio_crear("0.05")).precio == Decimal("0.05")
+
+
+def _payload_corte_respuesta():
+    from datetime import datetime
+    return {
+        "id": 1,
+        "barbero_id": 1,
+        "servicio_id": 1,
+        "precio": Decimal("100.00"),
+        "porcentaje_barbero": Decimal("50"),
+        "parte_barbero": Decimal("50.00"),
+        "metodo_pago": "efectivo",
+        "fecha": datetime(2026, 10, 6, 12, 0, 0),
+        "sincronizado": False,
+    }
+
+
+def test_dto_personal_excluye_parte_barberia():
+    """T14: CortePersonal acepta el corte sin parte_barberia."""
+    from app.schemas.corte import CortePersonal
+
+    personal = CortePersonal(**_payload_corte_respuesta())
+    assert "parte_barberia" not in personal.model_dump()
+    assert personal.parte_barbero == Decimal("50.00")
+
+
+def test_dto_compat_conserva_parte_barberia_para_admin():
+    """T14: CorteResponse sigue intacto con el campo (compat admin)."""
+    from app.schemas.corte import CorteResponse
+
+    completo = CorteResponse(
+        **{**_payload_corte_respuesta(), "parte_barberia": Decimal("50.00")}
+    )
+    assert completo.parte_barberia == Decimal("50.00")
