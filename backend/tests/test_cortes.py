@@ -794,3 +794,24 @@ def test_errores_exactos_sin_filtraciones(client):
         headers={"Authorization": f"Bearer {token_barbero}"},
     )
     assert r.status_code == 422
+
+
+def test_listado_global_admin_contrato_completo(client):
+    """T24: el listado global de admin conserva el contrato completo."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t24", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "admin_t24", RolModelo.ADMIN, Decimal("0"))
+    db.close()
+
+    _login_y_registrar_corte(client, "barbero_t24", servicio_id)
+    respuesta = client.get(
+        "/api/cortes/",
+        headers={"Authorization": f"Bearer {_token_para(client, 'admin_t24')}"},
+    )
+    assert respuesta.status_code == 200
+    items = respuesta.json()
+    assert len(items) == 1
+    assert items[0]["parte_barberia"] == "50.00"
