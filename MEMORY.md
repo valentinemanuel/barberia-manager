@@ -12,6 +12,7 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 - **Monedas**: Decimal en backend, cents (enteros) en frontend
 - **Fechas**: UTC en backend, local en frontend; strings solo-fecha (`YYYY-MM-DD`) se parsean como fecha LOCAL (nunca como UTC, retrocedería un día)
 - **Diseño frontend (spec 001)**: sistema propio "Tinta & hueso" — tokens CSS + kit `components/ui`, sin frameworks CSS; Archivo Variable self-hosted, iconos `lucide-react`
+- **Herramientas MCP**: plantilla sin credenciales en `opencode.json.example` y guía en `docs/mcp.md`; Playwright para navegador, Context7 para documentación, SQLite y GitHub opcionales. No confundir configuración con conexión verificada.
 
 ## Estado Actual
 - [x] Estructura del proyecto
@@ -105,3 +106,9 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 - `sdd-reviewer` dictamina **APROBADO PAQUETE 1**, sin correcciones ni bloqueantes dentro del alcance. Verificación independiente de imports/configuración, firmas/contratos, aritmética/contexto y seis tareas/evidencia.
 - Reejecución exclusiva del test puro con el runner aislado: `167 passed in 0.13s`. Los resultados rojos históricos se contrastaron documentalmente, no se reprodujeron rompiendo código.
 - Cierre limitado al paquete de dos archivos; la aplicación todavía no usa esas funciones. No constituye validación integral de 57 RF/6 RNF ni autoriza paquete 2, API, DB, migraciones o frontend. Próximo paso: proponer el siguiente paquete solo si el usuario lo aprueba.
+- Git flow: ramas de trabajo desde `dev` → PR a `dev`; `dev` → `main` por release
+
+## Recuperación documental (2026-10-05)
+- Recuperado el contenido útil de `b211ee5` en una rama nueva desde `dev`, sin cherry-pick ni reescritura de la rama histórica `feat/mcp-config-y-offline`.
+- Conservados el estado y los pendientes actuales; no se recupera la afirmación antigua de que todos los tests están completos.
+- Plantilla MCP adaptada a la documentación de OpenCode V2 (`mcp.servers`, `disabled`, credenciales por entorno). La configuración local existente no se modifica. La conexión de los servidores de la plantilla queda por verificar en cada entorno.
