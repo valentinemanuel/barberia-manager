@@ -24,6 +24,10 @@ def hash_canonico(payload: dict) -> str:
     return hashlib.sha256(texto.encode("utf-8")).hexdigest()
 
 
+class ConflictoIdentidad(ValueError):
+    """Misma clave con distinto contenido: se rechaza sin efecto (HTTP 409)."""
+
+
 def ejecutar_operacion(
     db: Session,
     *,
@@ -48,7 +52,7 @@ def ejecutar_operacion(
     )
     if existente is not None:
         if existente.hash_operacion != firma:
-            raise ValueError(
+            raise ConflictoIdentidad(
                 "Conflicto de identidad: la operación ya existe con otro contenido"
             )
         return dict(existente.resultado)

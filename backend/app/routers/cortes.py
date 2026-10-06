@@ -9,7 +9,10 @@ from app.models.corte import Corte
 from app.models.usuario import Usuario, Rol
 from app.schemas.corte import CorteCrear, CorteResponse, CortePersonal
 from app.services.corte_service import crear_corte
-from app.services.operacion_corte_service import ejecutar_operacion
+from app.services.operacion_corte_service import (
+    ConflictoIdentidad,
+    ejecutar_operacion,
+)
 
 router = APIRouter(prefix="/api/cortes", tags=["Cortes"])
 
@@ -135,6 +138,8 @@ def registrar_corte(
         db.commit()
         db.refresh(corte)
         return corte
+    except ConflictoIdentidad as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

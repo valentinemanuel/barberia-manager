@@ -938,3 +938,43 @@ def test_post_sin_uuid_camino_legacy_intacto(client):
     respuesta = _login_y_registrar_corte(client, "barbero_t28b", servicio_id)
     assert respuesta.status_code == 201
     assert respuesta.json()["parte_barbero"] == "50.00"
+
+
+def test_conflicto_identidad_mismo_uuid_distinto_contenido_409(client):
+    """T29: misma UUID con otro servicio → 409 sin efecto; el acuse original sigue."""
+    import uuid as uuid_lib
+    from app.models.corte import Corte as CorteModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t29", Decimal("50"), Decimal("100.00"))
+    servicio1 = db.query(Servicio).first().id
+    db.add(
+        Servicio(
+            nombre="Servicio T29b",
+            descripcion="Segundo servicio",
+            precio=Decimal("200.00"),
+            duracion_minutos=30,
+            activo=True,
+        )
+    )
+    db.commit()
+    servicio2 = db.query(Servicio).filter(Servicio.nombre == "Servicio T29b").first().id
+    db.close()
+
+    token = _token_para(client, "barbero_t29")
+    op_id = str(uuid_lib.uuid4())
+    body1 = {"servicio_id": servicio1, "metodo_pago": "efectivo", "operacion_uuid": op_id}
+    body2 = {"servicio_id": servicio2, "metodo_pago": "efectivo", "operacion_uuid": op_id}
+
+    r1 = client.post("/api/cortes/", json=body1, headers={"Authorization": f"Bearer {token}"})
+    assert r1.status_code == 201
+    r2 = client.post("/api/cortes/", json=body2, headers={"Authorization": f"Bearer {token}"})
+    assert r2.status_code == 409
+
+    r3 = client.post("/api/cortes/", json=body1, headers={"Authorization": f"Bearer {token}"})
+    assert r3.status_code == 201
+    assert r3.json()["id"] == r1.json()["id"]
+
+    db = TestingSessionLocal()
+    assert db.query(CorteModelo).count() == 1
+    db.close()
