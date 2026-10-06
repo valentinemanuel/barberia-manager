@@ -303,7 +303,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-1/RF-2/RF-8/RF-10 onli
   - Implementar: verificar que el reparto usa precio actual del servicio + porcentaje actual del destinatario (el código ya lo hace; ajustar solo si un test revela lo contrario, sin rojo artificial).
   - Hecho cuando: tests verdes que fijan destinatario-valores-actuales para propio, admin-propio y admin-tercero.
 
-- [ ] **T23. Errores exactos y sin filtraciones.** RF-14 (regresión), RNF-5.
+- [x] **T23. Errores exactos y sin filtraciones.** RF-14 (regresión), RNF-5.
   - Dependencias: T20–T21.
   - Tests primero: destino inexistente → 404 idéntico a corte inexistente (sin revelar existencia); `barbero_id` de barbero por barbero → 403; `momento_real` futuro por admin → 400 con mensaje en español; cuerpo con tipos inválidos → 422.
   - Hecho cuando: cada rechazo con su código exacto y sin datos ajenos en mensajes.
@@ -326,7 +326,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-1/RF-2/RF-8/RF-10 onli
 | T20 | Rojo real: 4 failed (el body ignoraba `barbero_id`; sin 403/404) | Verde: `26 passed` (`test_cortes.py` + `test_sync_roles.py`) | Desde `backend`: pytest por archivo. `barberia.db` hash idéntico; solo `schemas/corte.py` + `corte_service.py` + `routers/cortes.py` + `test_cortes.py`. Cambio: `barbero_id` opcional solo admin (403 barbero, 404 inexistente, inactivo con % permitido); reparto con valores del destinatario; registro propio intacto; sync sin destino sigue propio. |
 | T21 | Rojo real: 3 failed (momento ignorado: 201 con fecha automática en vez de 2020; sin 400 a futuro ni a barbero) | Verde: `30 passed` (`test_cortes.py` + `test_sync_roles.py`) | Desde `backend`: pytest por archivo. `barberia.db` hash idéntico; solo `schemas/corte.py` + `corte_service.py` + `routers/cortes.py` + `test_cortes.py`. Cambio: `momento_real` opcional solo admin (pasado sin límite, futuro 400, barbero 400, tz normalizada a UTC naive); servicio lo guarda en `fecha`. |
 | T22 | Verde inicial real (cubierto por implementación T20; sin rojo artificial ni cambio productivo) | Mismo verde | Test: admin retroactivo 2021 para barbero 30% sobre 200.00 → `60.00` + fecha conservada (no el 0% del admin). Solo `test_cortes.py` + este documento. |
-| T23 |  |  |  |
+| T23 | Verde inicial real (cubierto por T20–T21; sin rojo artificial ni cambio productivo) | Mismo verde | Test: 404 `Barbero no encontrado`, 403 con `admin`, 400 con `futuro`, 422 en tipos inválidos; sin datos ajenos. Solo `test_cortes.py` + este documento. |
 | T24 |  |  |  |
 | T25 |  |  |  |
 

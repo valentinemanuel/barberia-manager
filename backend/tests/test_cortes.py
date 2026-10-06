@@ -755,3 +755,42 @@ def test_reparto_usa_valores_actuales_del_destinatario(client):
     assert Decimal(data["porcentaje_barbero"]) == Decimal("30")
     assert data["parte_barbero"] == "60.00"
     assert data["fecha"].startswith("2021-03-15T09:30:00")
+
+
+def test_errores_exactos_sin_filtraciones(client):
+    """T23: cada rechazo con su código y mensaje exacto, sin datos ajenos."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t23", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "admin_t23", RolModelo.ADMIN, Decimal("0"))
+    db.close()
+
+    token_admin = _token_para(client, "admin_t23")
+    token_barbero = _token_para(client, "barbero_t23")
+
+    r = _registrar_corte_admin(client, token_admin, servicio_id, 9999)
+    assert r.status_code == 404
+    assert r.json()["detail"] == "Barbero no encontrado"
+
+    r = _registrar_corte_con_momento(client, token_barbero, servicio_id, None)
+    assert r.status_code == 201
+    r = client.post(
+        "/api/cortes/",
+        json={"servicio_id": servicio_id, "metodo_pago": "efectivo", "barbero_id": 1},
+        headers={"Authorization": f"Bearer {token_barbero}"},
+    )
+    assert r.status_code == 403
+    assert "admin" in r.json()["detail"].lower()
+
+    r = _registrar_corte_con_momento(client, token_admin, servicio_id, "2999-06-01T00:00:00")
+    assert r.status_code == 400
+    assert "futuro" in r.json()["detail"].lower()
+
+    r = client.post(
+        "/api/cortes/",
+        json={"servicio_id": "no-entero", "metodo_pago": "efectivo"},
+        headers={"Authorization": f"Bearer {token_barbero}"},
+    )
+    assert r.status_code == 422
