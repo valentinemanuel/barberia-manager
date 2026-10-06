@@ -133,6 +133,9 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 - `tasks.md` con T34–T41 (~3–4h) en rama `feat/spec-002-paquete-6-abonos-saldos`: tabla movimientos + migración 003, abonos por concepto, independencia, saldos/estados, cobro inicial, exceso online + bloqueo calculado, privacidad y regresión. Decisiones: UUID por movimiento, obligación = precio/parte_barbero, sin excedentes/unknown/revisión en este paquete, endpoint de saldos separado, gate de migración real vigente.
 - T34–T41 en verde + `sdd-reviewer`: **APROBADO PAQUETE 6**. Corrección de la revisión: `uuid` de movimiento validado como `UUID` + test 422. Divulgación verificada: `barberia.db` ganó la tabla vacía `movimientos_corte` por `create_all` histórico (0 filas, legacy intacto, baseline `4c7f1b19…`). P2 para futuro: carrera concurrente de abonos sin lock, UUID duplicada sin 409 ante distinto payload, rama offline sin revisión RF-38 todavía. No autoriza paquete 7 ni declara la spec implementada.
 
+## Spec 002 — paquete 7 redactado (2026-10-06)
+- `tasks.md` con T42–T49 (~3–4h) en rama `feat/spec-002-paquete-7-edicion-anulacion`: columnas de anulación + migración 004, edición propia con recálculo RF-42, bloqueo 409, anulación con motivo admin, fuera de devengado + sin abonos al anulado, privacidad y regresión. Decisiones: 409 bloqueado/anulado, motivo obligatorio admin en bloqueado, admin conserva listado + reportes, sin compensaciones/revisión/jornadas en este paquete. Implementación pendiente de aprobación.
+
 ## Recuperación documental (2026-10-05)
 - Recuperado el contenido útil de `b211ee5` en una rama nueva desde `dev`, sin cherry-pick ni reescritura de la rama histórica `feat/mcp-config-y-offline`.
 - Conservados el estado y los pendientes actuales; no se recupera la afirmación antigua de que todos los tests están completos.

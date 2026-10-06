@@ -527,3 +527,95 @@ Aprobación recibida: alcance aprobado por el usuario (RF-16–21, RF-37, bloque
 ### Cierre del paquete 6 (revisión independiente)
 
 `sdd-reviewer`: **APROBADO PAQUETE 6**. Verificó "Hecho cuando" T34–T41, cobertura parcial sin overclaim (sin compensaciones/devoluciones RF-43, sin revisión RF-38/53, sin unknown RF-44, sin edición/anulación), gates intactos (upgrades solo en TEMP con guards 002/003 verificados; ningún `upgrade` contra base real; `create_all` histórico intacto) y constitución (Decimal canónico + quantize de presentación exacto por construcción; % solo servicios; privacidad con 404 idéntico y DTOs limpios; compat: sync y DTO personal intactos; UTC naive coherente con `Corte.fecha`). Reejecutó todo: 106 por archivo (55 cortes + 23 roles + 3 sync + 4 usuarios + 2 auth + 2 auditoría + 8 invariante + 10 t9–t11) + 167 aislada, hash DB idéntico (`4c7f1b19…`, divulgación T35 verificada: 0 filas en `movimientos_corte`, legacy intacto). Verdes iniciales T37/T40 legítimos (cubiertos por T36/T35–T36); ajuste cosmético `'0'` vs `'0.00'` solo presentación. Corrección aplicada por la revisión (dentro del alcance, archivos autorizados): `uuid` del movimiento validado como `UUID` (antes string libre) + test 422; re-verificado 55 en `test_cortes.py`. P2 para futuro (no bloqueantes): (1) carrera de abonos concurrentes contra el saldo sin lock (`database.py` sin `BEGIN IMMEDIATE`; RF-41 concurrente corresponde al protocolo de exclusión diferido); (2) UUID de movimiento duplicada con distinto payload devuelve el existente sin 409 (sin hash almacenado que comparar); (3) `schemas/corte.py` tocado por T38 aunque no figuraba en la lista autorizada (requerido y divulgado en evidencia; regularizar lista); (4) rama `origen` offline sin llamadores API todavía: el paquete de sync deberá implementar estados de revisión RF-38/53 en vez de reutilizar el camino de abono normal. El cierre no autoriza paquete 7 ni declara la spec implementada.
+
+---
+
+## Paquete 7 — Edición, anulación y bloqueo
+
+Estado: **tareas redactadas, pendientes de aprobación para implementar**. Paquetes 1–6 cerrados, no rehacer.
+
+Aprobación recibida: alcance aprobado por el usuario (RF-22–27, RF-42, RF-46 parcial). No se autoriza implementación por esta redacción.
+
+### Alcance y límites
+
+- Ocho tareas de 20–30 minutos: estimación 3–4 horas.
+- Cobertura **parcial**: RF-22 (edición propia no bloqueada), RF-23 (bloqueo por pagos), RF-24 parcial (bloqueo por cierre: property preparada, sin vínculo de cierre aún), RF-25 (abonos posteriores pese a bloqueo), RF-26 (corrección admin con motivo), RF-27 (anulado conservado, fuera de devengado), RF-42 (recálculo por servicio / conservación por método), RF-46 parcial (sin nuevos abonos al anulado, movimientos conservados; excedentes explícitos quedan para revisión). No afirma compensaciones/devoluciones (RF-43), reasignación, jornadas/cierres ni cumplimiento integral.
+- Decisiones registradas:
+  - `PATCH /cortes/{id}` con `servicio_id` y/o `metodo_pago` opcionales. Barbero: solo propios no bloqueados/no anulados; titularidad ajena → 404; bloqueado → 409 `corte_bloqueado`; anulado → 409 `corte_anulado`.
+  - Cambio de servicio recalcula precio/porcentaje actuales + reparto (valores del catálogo vigente, RF-42); solo método conserva importes.
+  - `POST /cortes/{id}/anular` con `motivo` opcional (barbero propio no bloqueado) y obligatorio para admin sobre bloqueado (RF-26); sin motivo admin en bloqueado → 400.
+  - Anulado: columnas `anulado_en`/`anulado_motivo`/`anulado_por` (migración 004 aditiva, nullable, con guard); visible en historial con marca; excluido del devengado de reportes (cambio mínimo: filtro `anulado_en IS NULL`); sin nuevos abonos ordinarios al anulado → 409; movimientos conservados.
+  - Abono posterior a corte bloqueado NO anulado sigue permitido (RF-25, ya funciona: sin enforcement contrario).
+- Archivos que podrá tocar este paquete cuando se autorice implementar:
+  - C `backend/alembic/versions/004_anulacion_corte.py` (solo agrega columnas nullable; idempotente; con guard).
+  - M `backend/app/models/corte.py` (solo columnas de anulación).
+  - M `backend/app/models/__init__.py` (solo si requiere re-export; probablemente intacto).
+  - C `backend/app/services/edicion_corte_service.py` (solo reglas editar/anular/bloqueo + recálculo RF-42).
+  - M `backend/app/routers/cortes.py` (solo PATCH + POST anular).
+  - M `backend/app/schemas/corte.py` (solo `CorteEditar` + `CorteAnular`; DTOs de respuesta intactos + marca `anulado` en personal).
+  - M `backend/app/routers/reportes.py` (solo excluir anulados del devengado).
+  - M `backend/tests/test_cortes.py` (solo tests nuevos).
+- Prohibido: compensaciones/devoluciones, revisión/unknown, reasignación, jornadas/cierres, frontend, sync, DTO admin, `create_all`.
+- **Gate de migración real** (igual que paquetes 5–6): archivo commiteable; APLICAR contra base real exige aprobación + backup + copia primero. Hash de `barberia.db` antes/después (baseline vigente `4c7f1b19…`).
+
+### Tareas en orden de dependencia
+
+- [ ] **T42. Columnas de anulación + migración 004.** RF-27 (base), RNF-3.
+  - Dependencias: ninguna dentro del paquete.
+  - Tests primero: `history` muestra `004`; `upgrade` en TEMP vacía agrega las columnas; en TEMP con legacy + `create_all` no toca nada (guard); repetir no-op.
+  - Implementar: `anulado_en`/`anulado_motivo`/`anulado_por` nullable en `Corte` + revisión solo-aditiva con guard de existencia.
+  - Hecho cuando: escenarios TEMP verificados y prohibido aplicar contra base real.
+
+- [ ] **T43. Edición propia no bloqueada.** RF-22/RF-42 (parciales).
+  - Dependencias: T42 (modelo con columnas presentes aunque no usadas aún).
+  - Tests primero: barbero cambia método → 200 con mismos importes; cambia servicio → 200 con precio/porcentaje/reparto actuales; ajeno → 404; servicio inexistente/inactivo → 404/400.
+  - Implementar: `PATCH /cortes/{id}` con `CorteEditar`; recálculo vía valores actuales (reutilizar `calcular_partes` + validadores).
+  - Hecho cuando: tests API en verde y el registro original conserva trazabilidad (sin UPDATE destructivo de snapshots previos: se sobrescribe el vigente, historial de cambios para paquete de auditoría).
+
+- [ ] **T44. Bloqueo efectivo del barbero.** RF-23/RF-25 (parciales).
+  - Dependencias: T43 + helper `corte_bloqueado()` (T39).
+  - Tests primero: tras un abono, PATCH y POST anular del barbero → 409 `corte_bloqueado`; registrar otro abono sigue 201 (RF-25).
+  - Implementar: enforcement con `corte_bloqueado()` en ambas rutas (solo barbero; admin sigue gestión).
+  - Hecho cuando: tests en verde y el bloqueo no impide completar pagos.
+
+- [ ] **T45. Anulación propia y marca visible.** RF-27 (parcial).
+  - Dependencias: T44.
+  - Tests primero: barbero anula propio no bloqueado → 200 con marca; aparece en historial como anulado; segundo intento → 409 `corte_anulado`; edición posterior → 409.
+  - Implementar: `POST /{id}/anular` (motivo opcional barbero) + marca `anulado` en DTO personal.
+  - Hecho cuando: tests en verde y el anulado nunca vuelve a activo por edición.
+
+- [ ] **T46. Corrección admin con motivo.** RF-26 (parcial).
+  - Dependencias: T44–T45.
+  - Tests primero: admin edita/anula bloqueado sin motivo → 400; con motivo → 200 y conserva motivo/autor/momento; admin sobre ajeno-activo también con motivo.
+  - Implementar: `motivo` obligatorio para admin en bloqueado/anulado; persistencia en columnas de anulación (edición admin: motivo exigido pero valores anteriores visibles en fila; journal completo en paquete de auditoría).
+  - Hecho cuando: tests en verde y ninguna corrección admin sin motivo persiste.
+
+- [ ] **T47. Anulado fuera de devengado y sin nuevos abonos.** RF-27/RF-46 (parciales).
+  - Dependencias: T45.
+  - Tests primero: reportes no cuentan el anulado; abono ordinario al anulado → 409; movimientos previos siguen consultables.
+  - Implementar: filtro `anulado_en IS NULL` en reportes de devengado (cambio mínimo) + rechazo de abonos al anulado en `registrar_abono` o router (decidir el punto exacto sin romper sync: sync legacy sin abonos no afectado).
+  - Hecho cuando: tests en verde y el dinero ya abonado se conserva intacto.
+
+- [ ] **T48. Privacidad y compat de edición/anulación.** RF-14/RF-15 (regresión), RNF-3/RNF-5.
+  - Dependencias: T43–T47.
+  - Tests primero: barbero no edita/anula ajeno (404 idéntico); respuestas sin `parte_barberia`/costos (detector T17); admin gestión conserva acceso; listado global intacto.
+  - Hecho cuando: verdes sin cambios productivos nuevos salvo ajustes exigidos por un rojo real.
+
+- [ ] **T49. Regresión total y cierre del paquete.** RF-22–27/RF-42/RF-46 (parciales), RNF-3/RNF-6.
+  - Dependencias: T42–T48.
+  - Ejecutar por archivo las suites tocadas + suite aislada del paquete 1, todo en verde, con precaución DB real + gate de migración registrados (ningún `upgrade` contra base real ejecutado).
+  - Registrar comandos/resultados en la evidencia de abajo y actualizar el estado sin declarar implementada la spec completa. El cierre requiere revisión independiente (`sdd-reviewer`) y no autoriza paquete 8.
+  - Hecho cuando: todo lo anterior en verde, solo los archivos autorizados cambiaron y queda solicitada la revisión de cierre.
+
+### Evidencia futura (paquete 7)
+
+| Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
+|---|---|---|---|
+| T42 |  |  |  |
+| T43 |  |  |  |
+| T44 |  |  |  |
+| T45 |  |  |  |
+| T46 |  |  |  |
+| T47 |  |  |  |
+| T48 |  |  |  |
+| T49 |  |  |  |
