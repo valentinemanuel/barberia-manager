@@ -1052,3 +1052,43 @@ def test_doble_envio_simultaneo_un_solo_corte(client):
     db = TestingSessionLocal()
     assert db.query(CorteModelo).count() == 1
     db.close()
+
+
+def _enviar_lote_sync(client, token, operaciones):
+    return client.post(
+        "/api/sync/",
+        json={"operaciones": operaciones},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+
+def test_sync_reenvio_con_uuid_no_duplica(client):
+    """T32: reenviar el lote con operacion_uuid no duplica el corte."""
+    import uuid as uuid_lib
+    from app.models.corte import Corte as CorteModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t32", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+
+    token = _token_para(client, "barbero_t32")
+    lote = [
+        {
+            "id": "op-1",
+            "accion": "crear_corte",
+            "datos": {
+                "servicio_id": servicio_id,
+                "metodo_pago": "efectivo",
+                "operacion_uuid": str(uuid_lib.uuid4()),
+            },
+        }
+    ]
+    r1 = _enviar_lote_sync(client, token, lote)
+    r2 = _enviar_lote_sync(client, token, lote)
+    assert r1.json()["aceptadas"] == 1
+    assert r2.json()["aceptadas"] == 1
+
+    db = TestingSessionLocal()
+    assert db.query(CorteModelo).count() == 1
+    db.close()

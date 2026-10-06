@@ -9,6 +9,7 @@ from app.dependencies import oauth2_scheme, verificar_token
 from app.models.corte import MetodoPago
 from app.models.usuario import Rol, Usuario
 from app.services.corte_service import crear_corte
+from app.services.operacion_corte_service import ejecutar_operacion
 
 router = APIRouter(prefix="/api/sync", tags=["Sincronización"])
 
@@ -120,7 +121,31 @@ def sincronizar_operaciones(
                     metodo = MetodoPago(op.datos["metodo_pago"])
                 except (ValueError, KeyError):
                     metodo = MetodoPago.EFECTIVO
-                crear_corte(db, usuario, int(op.datos["servicio_id"]), metodo)
+                uuid_val = op.datos.get("operacion_uuid")
+                if uuid_val is None:
+                    # Legacy sin UUID: comportamiento intacto, sin promesa de
+                    # deduplicación retroactiva (limitación documentada T32).
+                    crear_corte(db, usuario, int(op.datos["servicio_id"]), metodo)
+                else:
+                    def _efecto_sync():
+                        creado = crear_corte(
+                            db, usuario, int(op.datos["servicio_id"]), metodo
+                        )
+                        return {"corte_id": creado.id, "estado": "aceptada"}
+
+                    ejecutar_operacion(
+                        db,
+                        actor_id=usuario.id,
+                        namespace="sync",
+                        operacion_id=str(uuid_val),
+                        accion="crear_corte",
+                        payload={
+                            "servicio_id": str(op.datos["servicio_id"]),
+                            "metodo_pago": str(metodo),
+                        },
+                        modo="offline",
+                        ejecutar=_efecto_sync,
+                    )
                 db.commit()
             else:
                 # Otras acciones administrativas: aceptadas como válidas para el rol;
