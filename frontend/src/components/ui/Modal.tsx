@@ -31,16 +31,28 @@ export default function Modal({
 }: ModalProps) {
   const refModal = useRef<HTMLDivElement>(null)
   const refAnterior = useRef<HTMLElement | null>(null)
+  // Recuerda si el modal ya estaba abierto: el foco solo se mueve
+  // en las transiciones abrir/cerrar, nunca en re-renderizados
+  // (p. ej. al escribir en un input del formulario).
+  const refEstabaAbierto = useRef(false)
 
   const cerrar = useCallback(() => {
     if (!cargando) onCerrar()
   }, [cargando, onCerrar])
 
   useEffect(() => {
-    if (!abierto) return
+    if (abierto && !refEstabaAbierto.current) {
+      refAnterior.current = document.activeElement as HTMLElement | null
+      refModal.current?.focus()
+    }
+    if (!abierto && refEstabaAbierto.current) {
+      refAnterior.current?.focus()
+    }
+    refEstabaAbierto.current = abierto
+  }, [abierto])
 
-    refAnterior.current = document.activeElement as HTMLElement | null
-    refModal.current?.focus()
+  useEffect(() => {
+    if (!abierto) return
 
     const alPresionar = (evento: KeyboardEvent) => {
       if (evento.key === 'Escape') cerrar()
@@ -48,7 +60,6 @@ export default function Modal({
     document.addEventListener('keydown', alPresionar)
     return () => {
       document.removeEventListener('keydown', alPresionar)
-      refAnterior.current?.focus()
     }
   }, [abierto, cerrar])
 
