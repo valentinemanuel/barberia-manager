@@ -7,6 +7,11 @@ from app.models.gasto import Gasto
 from app.models.cierre_caja import CierreCaja
 from app.models.venta import Venta
 from app.models.auditoria import Auditoria, AccionAuditoria
+from app.models.operacion_corte import (
+    OperacionCorte,
+    EstadoOperacion,
+    ModoCaptura,
+)
 
 __all__ = [
     "Usuario",
@@ -19,4 +24,7 @@ __all__ = [
     "Venta",
     "Auditoria",
     "AccionAuditoria",
+    "OperacionCorte",
+    "EstadoOperacion",
+    "ModoCaptura",
 ]

@@ -852,3 +852,267 @@ def test_destino_propio_explicito_del_admin_201(client):
     )
     assert respuesta.status_code == 201
     assert respuesta.json()["barbero_id"] == propio_id
+
+
+def _ejecutar_registro_idempotente(db, actor, servicio_id, op_id, ns="web"):
+    """T27: registra un corte vía ejecutor idempotente (efecto único)."""
+    import uuid as uuid_lib
+    from app.services.corte_service import crear_corte
+    from app.services.operacion_corte_service import ejecutar_operacion
+
+    payload = {"servicio_id": servicio_id, "metodo_pago": "efectivo"}
+
+    def _efecto():
+        corte = crear_corte(db, actor, servicio_id, "efectivo")
+        return {"corte_id": corte.id, "estado": "aceptada"}
+
+    return ejecutar_operacion(
+        db,
+        actor_id=actor.id,
+        namespace=ns,
+        operacion_id=op_id or str(uuid_lib.uuid4()),
+        accion="crear_corte",
+        payload=payload,
+        modo="online",
+        ejecutar=_efecto,
+    )
+
+
+def test_operacion_replay_devuelve_acuse_sin_reejecutar(client):
+    """T27: misma clave + mismo hash → un solo corte y mismo acuse."""
+    import uuid as uuid_lib
+    from app.models.corte import Corte
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t27", Decimal("50"), Decimal("100.00"))
+    actor = db.query(Usuario).filter(Usuario.usuario == "barbero_t27").first()
+    servicio_id = db.query(Servicio).first().id
+    op_id = str(uuid_lib.uuid4())
+
+    acuse1 = _ejecutar_registro_idempotente(db, actor, servicio_id, op_id)
+    db.commit()
+    acuse2 = _ejecutar_registro_idempotente(db, actor, servicio_id, op_id)
+    db.commit()
+
+    assert acuse1 == acuse2
+    assert acuse1["estado"] == "aceptada"
+    assert db.query(Corte).count() == 1
+    db.close()
+
+
+def test_post_doble_uuid_mismo_corte(client):
+    """T28: doble POST con misma operacion_uuid → mismo id, un solo corte."""
+    import uuid as uuid_lib
+    from app.models.corte import Corte as CorteModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t28", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+
+    token = _token_para(client, "barbero_t28")
+    op_id = str(uuid_lib.uuid4())
+    body = {
+        "servicio_id": servicio_id,
+        "metodo_pago": "efectivo",
+        "operacion_uuid": op_id,
+    }
+    r1 = client.post("/api/cortes/", json=body, headers={"Authorization": f"Bearer {token}"})
+    r2 = client.post("/api/cortes/", json=body, headers={"Authorization": f"Bearer {token}"})
+    assert r1.status_code == 201
+    assert r2.status_code == 201
+    assert r1.json()["id"] == r2.json()["id"]
+
+    db = TestingSessionLocal()
+    assert db.query(CorteModelo).count() == 1
+    db.close()
+
+
+def test_post_sin_uuid_camino_legacy_intacto(client):
+    """T28: sin UUID el registro funciona como siempre (RNF-3)."""
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t28b", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+
+    respuesta = _login_y_registrar_corte(client, "barbero_t28b", servicio_id)
+    assert respuesta.status_code == 201
+    assert respuesta.json()["parte_barbero"] == "50.00"
+
+
+def test_conflicto_identidad_mismo_uuid_distinto_contenido_409(client):
+    """T29: misma UUID con otro servicio → 409 sin efecto; el acuse original sigue."""
+    import uuid as uuid_lib
+    from app.models.corte import Corte as CorteModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t29", Decimal("50"), Decimal("100.00"))
+    servicio1 = db.query(Servicio).first().id
+    db.add(
+        Servicio(
+            nombre="Servicio T29b",
+            descripcion="Segundo servicio",
+            precio=Decimal("200.00"),
+            duracion_minutos=30,
+            activo=True,
+        )
+    )
+    db.commit()
+    servicio2 = db.query(Servicio).filter(Servicio.nombre == "Servicio T29b").first().id
+    db.close()
+
+    token = _token_para(client, "barbero_t29")
+    op_id = str(uuid_lib.uuid4())
+    body1 = {"servicio_id": servicio1, "metodo_pago": "efectivo", "operacion_uuid": op_id}
+    body2 = {"servicio_id": servicio2, "metodo_pago": "efectivo", "operacion_uuid": op_id}
+
+    r1 = client.post("/api/cortes/", json=body1, headers={"Authorization": f"Bearer {token}"})
+    assert r1.status_code == 201
+    r2 = client.post("/api/cortes/", json=body2, headers={"Authorization": f"Bearer {token}"})
+    assert r2.status_code == 409
+
+    r3 = client.post("/api/cortes/", json=body1, headers={"Authorization": f"Bearer {token}"})
+    assert r3.status_code == 201
+    assert r3.json()["id"] == r1.json()["id"]
+
+    db = TestingSessionLocal()
+    assert db.query(CorteModelo).count() == 1
+    db.close()
+
+
+def test_replay_con_catalogo_cambiado_no_recalcula(client):
+    """T30: replay tras cambiar catálogo devuelve el acuse original intacto."""
+    import uuid as uuid_lib
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t30", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+
+    token = _token_para(client, "barbero_t30")
+    op_id = str(uuid_lib.uuid4())
+    body = {
+        "servicio_id": servicio_id,
+        "metodo_pago": "efectivo",
+        "operacion_uuid": op_id,
+    }
+    r1 = client.post("/api/cortes/", json=body, headers={"Authorization": f"Bearer {token}"})
+    assert r1.status_code == 201
+
+    db = TestingSessionLocal()
+    db.query(Servicio).filter(Servicio.id == servicio_id).update({"precio": Decimal("200.00")})
+    db.query(Usuario).filter(Usuario.usuario == "barbero_t30").update(
+        {"porcentaje_ganancia": Decimal("60")}
+    )
+    db.commit()
+    db.close()
+
+    r2 = client.post("/api/cortes/", json=body, headers={"Authorization": f"Bearer {token}"})
+    assert r2.status_code == 201
+    assert r2.json()["id"] == r1.json()["id"]
+    assert r2.json()["parte_barbero"] == "50.00"
+    assert r2.json()["precio"] == "100.00"
+
+
+def test_doble_envio_simultaneo_un_solo_corte(client):
+    """T31: dos hilos con misma UUID → un solo corte y mismo id en ambos."""
+    import threading
+    import uuid as uuid_lib
+    from app.models.corte import Corte as CorteModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t31", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+
+    token = _token_para(client, "barbero_t31")
+    op_id = str(uuid_lib.uuid4())
+    body = {
+        "servicio_id": servicio_id,
+        "metodo_pago": "efectivo",
+        "operacion_uuid": op_id,
+    }
+    resultados = []
+
+    def _post():
+        respuesta = client.post(
+            "/api/cortes/", json=body, headers={"Authorization": f"Bearer {token}"}
+        )
+        resultados.append((respuesta.status_code, respuesta.json().get("id")))
+
+    hilos = [threading.Thread(target=_post) for _ in range(2)]
+    for hilo in hilos:
+        hilo.start()
+    for hilo in hilos:
+        hilo.join()
+
+    assert sorted(r[0] for r in resultados) == [201, 201]
+    assert resultados[0][1] == resultados[1][1] is not None
+
+    db = TestingSessionLocal()
+    assert db.query(CorteModelo).count() == 1
+    db.close()
+
+
+def _enviar_lote_sync(client, token, operaciones):
+    return client.post(
+        "/api/sync/",
+        json={"operaciones": operaciones},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+
+def test_sync_reenvio_con_uuid_no_duplica(client):
+    """T32: reenviar el lote con operacion_uuid no duplica el corte."""
+    import uuid as uuid_lib
+    from app.models.corte import Corte as CorteModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t32", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+
+    token = _token_para(client, "barbero_t32")
+    lote = [
+        {
+            "id": "op-1",
+            "accion": "crear_corte",
+            "datos": {
+                "servicio_id": servicio_id,
+                "metodo_pago": "efectivo",
+                "operacion_uuid": str(uuid_lib.uuid4()),
+            },
+        }
+    ]
+    r1 = _enviar_lote_sync(client, token, lote)
+    r2 = _enviar_lote_sync(client, token, lote)
+    assert r1.json()["aceptadas"] == 1
+    assert r2.json()["aceptadas"] == 1
+
+    db = TestingSessionLocal()
+    assert db.query(CorteModelo).count() == 1
+    db.close()
+
+
+def test_reintentos_agotados_sin_efecto_residual(client):
+    """P2-3 paquete 5: contención persistente → ReintentosAgotados, sin filas."""
+    from app.models.operacion_corte import OperacionCorte
+    from app.services.operacion_corte_service import (
+        ReintentosAgotados,
+        ejecutar_operacion,
+    )
+
+    db = TestingSessionLocal()
+    with pytest.raises(ReintentosAgotados):
+        ejecutar_operacion(
+            db,
+            actor_id=1,
+            namespace="web",
+            operacion_id=None,
+            accion="crear_corte",
+            payload={"a": "b"},
+            modo="online",
+            ejecutar=lambda: {"estado": "aceptada"},
+        )
+    assert db.query(OperacionCorte).count() == 0
+    db.close()
