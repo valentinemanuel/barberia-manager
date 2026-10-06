@@ -300,7 +300,8 @@ def resumen_dia(
         db.query(Corte)
         .filter(
             Corte.barbero_id == barbero.id,
-            Corte.fecha >= inicio
+            Corte.fecha >= inicio,
+            Corte.anulado_en.is_(None)
         )
         .all()
     )
@@ -330,7 +331,8 @@ def resumen_semana(
         db.query(Corte)
         .filter(
             Corte.barbero_id == barbero.id,
-            Corte.fecha >= inicio
+            Corte.fecha >= inicio,
+            Corte.anulado_en.is_(None)
         )
         .all()
     )
@@ -359,7 +361,8 @@ def resumen_mes(
         db.query(Corte)
         .filter(
             Corte.barbero_id == barbero.id,
-            Corte.fecha >= inicio
+            Corte.fecha >= inicio,
+            Corte.anulado_en.is_(None)
         )
         .all()
     )

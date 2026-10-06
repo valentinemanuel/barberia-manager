@@ -1663,3 +1663,22 @@ def test_reintentos_agotados_sin_efecto_residual(client):
         )
     assert db.query(OperacionCorte).count() == 0
     db.close()
+
+
+def test_resumen_personal_excluye_anulados(client):
+    """Revisión paquete 7 (RF-27): el anulado no cuenta en resúmenes propios."""
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t47c", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+
+    _login_y_registrar_corte(client, "barbero_t47c", servicio_id)
+    r2 = _login_y_registrar_corte(client, "barbero_t47c", servicio_id)
+    _anular_corte(client, _token_para(client, "barbero_t47c"), r2.json()["id"])
+
+    token = _token_para(client, "barbero_t47c")
+    auth = {"Authorization": f"Bearer {token}"}
+    for ruta in ("dia", "semana", "mes"):
+        r = client.get(f"/api/cortes/mi/resumen/{ruta}", headers=auth)
+        assert r.status_code == 200, ruta
+        assert r.json()["total_cortes"] == 1, ruta

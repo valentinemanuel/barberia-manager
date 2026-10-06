@@ -51,6 +51,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     with op.batch_alter_table("cortes") as batch:
+        batch.drop_constraint("fk_cortes_anulado_por", type_="foreignkey")
         batch.drop_column("anulado_por")
         batch.drop_column("anulado_motivo")
         batch.drop_column("anulado_en")

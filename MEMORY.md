@@ -136,6 +136,11 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 ## Spec 002 — paquete 7 redactado (2026-10-06)
 - `tasks.md` con T42–T49 (~3–4h) en rama `feat/spec-002-paquete-7-edicion-anulacion`: columnas de anulación + migración 004, edición propia con recálculo RF-42, bloqueo 409, anulación con motivo admin, fuera de devengado + sin abonos al anulado, privacidad y regresión. Decisiones: 409 bloqueado/anulado, motivo obligatorio admin en bloqueado, admin conserva listado + reportes, sin compensaciones/revisión/jornadas en este paquete. Implementación pendiente de aprobación.
 
+## Spec 002 — paquete 7 implementado y revisado (2026-10-06)
+- T42–T49 en verde + `sdd-reviewer`: REQUIERE CORRECCIONES → P1-1 (resúmenes personales contaban anulados) corregido por la revisión y verificado por el coordinador; P2 aplicados (downgrade FK, redacción T46). Tras correcciones: **APROBADO PAQUETE 7**.
+- P1-2 reportado como **deuda bloqueante del paquete de auditoría**: edición admin en bloqueado exige motivo pero lo descarta y pisa valores (RF-26 parcial). Requiere decisión del usuario antes del merge (aceptar deuda o journal mínimo).
+- Divulgación vigente: `barberia.db` estable (`4c7f1b19…`). No autoriza paquete 8 ni declara la spec implementada.
+
 ## Recuperación documental (2026-10-05)
 - Recuperado el contenido útil de `b211ee5` en una rama nueva desde `dev`, sin cherry-pick ni reescritura de la rama histórica `feat/mcp-config-y-offline`.
 - Conservados el estado y los pendientes actuales; no se recupera la afirmación antigua de que todos los tests están completos.

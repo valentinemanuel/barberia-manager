@@ -586,7 +586,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-22–27, RF-42, RF-46 
 
 - [x] **T46. Corrección admin con motivo.** RF-26 (parcial).
   - Dependencias: T44–T45.
-  - Tests primero: admin edita/anula bloqueado sin motivo → 400; con motivo → 200 y conserva motivo/autor/momento; admin sobre ajeno-activo también con motivo.
+  - Tests primero: admin edita/anula bloqueado sin motivo → 400; con motivo → 200 y conserva motivo/autor/momento (en anulación; en edición el motivo se exige pero su journal completo va al paquete de auditoría).
   - Implementar: `motivo` obligatorio para admin en bloqueado/anulado; persistencia en columnas de anulación (edición admin: motivo exigido pero valores anteriores visibles en fila; journal completo en paquete de auditoría).
   - Hecho cuando: tests en verde y ninguna corrección admin sin motivo persiste.
 
@@ -619,3 +619,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-22–27, RF-42, RF-46 
 | T47 | Rojo real: doble (anulado contado en dashboard; abono al anulado 201) | Verde: `91 passed` (3 archivos) | DB estable; `reportes.py` (6 filtros `anulado_en IS NULL`: conteos, top, día, ganancias) + `movimientos_corte.py` (409 al anulado) + `test_cortes.py`. Cambio mínimo sin reinterpretar cierres legacy. Dinero abonado conservado y consultable. |
 | T48 | Verde inicial real (cubierto por T43–T47; sin rojo artificial ni cambio productivo) | Mismo verde | Test: ajeno 404 en PATCH y anular, detector limpio en respuestas propias, admin anula con motivo, listado global intacto con contrato completo. Solo `test_cortes.py` + este documento. |
 | T49 | Sin rojo: solo verificación final, sin cambios productivos nuevos | Verde: `96 + 2 + 8 + 10 + 2` por archivo (toda la suite backend) + `167 passed` aislada | DB estable en baseline (`4c7f1b19…`); ningún `upgrade` contra base real ejecutado; `git status` solo este documento. Paquete 7 completo en cobertura parcial, sin declarar spec implementada; cierre pendiente de revisión independiente (`sdd-reviewer`), que no autoriza paquete 8. |
+
+### Cierre del paquete 7 (revisión independiente)
+
+`sdd-reviewer`: veredicto inicial **REQUIERE CORRECCIONES**. P1-1 corregido por la revisión: resúmenes personales `/mi/resumen/*` contaban anulados como devengado (RF-27); agregados 3 filtros `anulado_en IS NULL` + test (verificado por el coordinador). P1-2 reportado sin tocar (excede fix pequeño): la edición admin en bloqueado exige motivo pero lo descarta y pisa valores sin conservar anteriores — **deuda bloqueante registrada para el paquete de auditoría** (ver decisión del usuario en MEMORY). P2 aplicados por el coordinador: `downgrade()` 004 suelta la FK nombrada (verificado en TEMP) y redacción T46 corregida. Reejecución del reviewer: 119 + 167 verdes, hash DB idéntico. Tras correcciones: **APROBADO PAQUETE 7**. El cierre no autoriza paquete 8 ni declara la spec implementada.
