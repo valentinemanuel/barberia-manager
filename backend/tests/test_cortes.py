@@ -1315,6 +1315,48 @@ def test_cobro_parcial_sin_importe_400(client):
     assert r.status_code == 400
 
 
+def test_abono_mayor_al_restante_400(client):
+    """T39: exceso online se rechaza sin crear movimiento."""
+    from app.models.finanzas_corte import MovimientoCorte
+
+    corte_id = _corte_para_abonos(client, "barbero_t39")
+    token = _token_para(client, "barbero_t39")
+    assert _abonar(client, token, corte_id, "cliente", 60).status_code == 201
+    assert _abonar(client, token, corte_id, "cliente", 50).status_code == 400
+    db = TestingSessionLocal()
+    assert db.query(MovimientoCorte).count() == 1
+    db.close()
+
+
+def test_corte_bloqueado_desde_primer_abono(client):
+    """T39 (RF-23/25 base): bloqueo calculado desde el primer pago."""
+    from decimal import Decimal as DecimalT39
+    from app.models.corte import MetodoPago as MetodoT39
+    from app.models.finanzas_corte import ConceptoMovimiento as ConceptoT39
+    from app.services.corte_service import crear_corte as crear_corte_t39
+    from app.services.movimiento_corte_service import (
+        corte_bloqueado,
+        registrar_abono,
+    )
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t39b", Decimal("50"), Decimal("100.00"))
+    actor = db.query(Usuario).filter(Usuario.usuario == "barbero_t39b").first()
+    servicio_id = db.query(Servicio).first().id
+    corte = crear_corte_t39(db, actor, servicio_id, "efectivo")
+    assert corte_bloqueado(db, corte) is False
+    registrar_abono(
+        db,
+        autor=actor,
+        corte=corte,
+        concepto=ConceptoT39.CLIENTE,
+        importe=DecimalT39("10"),
+        metodo=MetodoT39.EFECTIVO,
+    )
+    assert corte_bloqueado(db, corte) is True
+    db.close()
+
+
 def test_reintentos_agotados_sin_efecto_residual(client):
     """P2-3 paquete 5: contención persistente → ReintentosAgotados, sin filas."""
     from app.models.operacion_corte import OperacionCorte

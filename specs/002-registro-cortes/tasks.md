@@ -494,7 +494,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-16–21, RF-37, bloque
   - Implementar: campos `cobro_inicial` + `importe_cobro` opcionales en el registro (propio y admin); el abono se crea en la misma UoW.
   - Hecho cuando: tests API en verde para las tres elecciones sin default.
 
-- [ ] **T39. Exceso online rechazado + bloqueo calculado.** RF-41/RF-23/RF-25 (parciales).
+- [x] **T39. Exceso online rechazado + bloqueo calculado.** RF-41/RF-23/RF-25 (parciales).
   - Dependencias: T35–T38.
   - Tests primero: abono mayor al restante (online) → 400 sin crear movimiento; tras el primer abono `corte_bloqueado()` es verdadero y antes es falso.
   - Implementar: validación contra saldo en la UoW + helper de bloqueo (sin enforcement de edición aún: no existe edición).
@@ -520,6 +520,6 @@ Aprobación recibida: alcance aprobado por el usuario (RF-16–21, RF-37, bloque
 | T36 | Rojo real: 2 failed (sin endpoint `/saldos`) + 1 ajuste cosmético (`'0'` vs `'0.00'`) | Verde: `73 passed` (3 archivos) | DB estable en baseline T35; solo `movimiento_corte_service.py` + `movimientos_corte.py` + `test_cortes.py`. Cambio: `calcular_saldo`/`saldos_corte` puros + `GET /{id}/saldos` personal (obligación = precio/parte_barbero, sin `parte_barberia`); presentación quantizada al centavo (valores exactos por construcción); sin endpoint de "marcar pagado" (404/405 verificado). |
 | T37 | Verde inicial real (cubierto por T36; sin rojo artificial ni cambio productivo) | Mismo verde | Matriz 0/30/30+70 → pendiente/parcial-70/pagado-0. Unknown/excedentes explícitamente fuera. Solo `test_cortes.py` + este documento. |
 | T38 | Rojo real: 2 failed (campos ignorados; parcial/completo sin abono) | Verde: `3 passed` nuevos | DB estable en baseline T35; solo `schemas/corte.py` + `routers/cortes.py` + `test_cortes.py`. Cambio: enum `CobroInicial` + `importe_cobro` opcionales; abono en la misma UoW (completo = precio del snapshot); cobro incluido en el hash idempotente (misma UUID + distinto cobro = 409 futuro); sin elección → pendiente. |
-| T39 |  |  |  |
+| T39 | Rojo real: exceso aceptado + `ImportError corte_bloqueado` | Verde: `79 passed` (3 archivos) | DB estable en baseline T35; solo `movimiento_corte_service.py` + `test_cortes.py`. Cambio: validación contra saldo con `origen` (online rechaza, offline documentado para revisión RF-38); helper `corte_bloqueado()` (cierre aún no existe). Cobro inicial/completo hereda la validación (completo = precio = restante). |
 | T40 |  |  |  |
 | T41 |  |  |  |
