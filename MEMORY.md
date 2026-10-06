@@ -120,7 +120,9 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 
 ## Spec 002 — paquete 3 mergeado + paquete 4 redactado (2026-10-06)
 - PR #22 mergeado a `dev` (paquete 3 integrado). `main` detrás: release `dev → main` a decisión del propietario.
-- `tasks.md` con T20–T25 (~2–3h) en rama `feat/spec-002-paquete-4-registro-online`: destino admin, momento retroactivo admin, momento automático barbero, snapshot del destinatario, errores exactos y regresión. Decisiones: `barbero_id`/`momento_real` solo admin (403/400 si barbero los envía), destino inactivo permitido con porcentaje, sin precio/porcentaje manual. Implementación pendiente de aprobación.
+- `tasks.md` con T20–T25 (~2–3h) en rama `feat/spec-002-paquete-4-registro-online`: destino admin, momento retroactivo admin, momento automático barbero, snapshot del destinatario, errores exactos y regresión. Decisiones: `barbero_id`/`momento_real` solo admin (403/400 si barbero los envía), destino inactivo permitido con porcentaje, sin precio/porcentaje manual.
+- Implementación T20–T25 completada y pusheada a la misma rama (82 backend + 167 aislada en verde). `barberia.db` intacta (mismo hash).
+- Revisión de cierre ejecutada: **APROBADO PAQUETE 4** sin correcciones (P2-1 destacado: destino sin validar rol —admin podría atribuir a otro admin— requiere tu decisión de spec). No autoriza paquete 5 ni declara la spec implementada.
 
 ## Recuperación documental (2026-10-05)
 - Recuperado el contenido útil de `b211ee5` en una rama nueva desde `dev`, sin cherry-pick ni reescritura de la rama histórica `feat/mcp-config-y-offline`.
