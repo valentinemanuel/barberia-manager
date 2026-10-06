@@ -129,6 +129,9 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 - Alcance T26–T33 (~3–4h) en rama `feat/spec-002-paquete-5-idempotencia`: journal idempotente mínimo, ejecutor get-or-create + hash, camino POST con UUID opcional, conflicto 409, replay sin recalcular, doble envío simultáneo, UUID en sync y regresión. Decisiones: UUID opcional (legacy intacto), namespace web/sync, solo estados terminales. Gate: ningún `upgrade` contra base real sin aprobación + backup verificado.
 - T26–T33 en verde + `sdd-reviewer`: **APROBADO PAQUETE 5**. Aplicados P2 del reviewer: header/tasks al día, `ReintentosAgotados` → 500 en POST y sync (test determinista), redacción T27. Divulgación vigente: `barberia.db` ganó la tabla vacía `operaciones_corte` por `create_all` histórico (0 filas, legacy intacto). No autoriza paquete 6 ni declara la spec implementada.
 
+## Spec 002 — paquete 6 redactado (2026-10-06)
+- `tasks.md` con T34–T41 (~3–4h) en rama `feat/spec-002-paquete-6-abonos-saldos`: tabla movimientos + migración 003, abonos por concepto, independencia, saldos/estados, cobro inicial, exceso online + bloqueo calculado, privacidad y regresión. Decisiones: UUID por movimiento, obligación = precio/parte_barbero, sin excedentes/unknown/revisión en este paquete, endpoint de saldos separado, gate de migración real vigente. Implementación pendiente de aprobación.
+
 ## Recuperación documental (2026-10-05)
 - Recuperado el contenido útil de `b211ee5` en una rama nueva desde `dev`, sin cherry-pick ni reescritura de la rama histórica `feat/mcp-config-y-offline`.
 - Conservados el estado y los pendientes actuales; no se recupera la afirmación antigua de que todos los tests están completos.
