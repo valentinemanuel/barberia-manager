@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -22,7 +23,7 @@ class MovimientoCrear(BaseModel):
     importe: Decimal
     metodo_pago: MetodoPago = MetodoPago.EFECTIVO
     momento_real: Optional[datetime] = None
-    uuid: Optional[str] = None
+    uuid: Optional[UUID] = None
 
 
 class MovimientoResponse(BaseModel):
@@ -96,7 +97,7 @@ def crear_movimiento(
             importe=datos.importe,
             metodo=datos.metodo_pago,
             momento_real=momento,
-            uuid=datos.uuid,
+            uuid=str(datos.uuid) if datos.uuid is not None else None,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

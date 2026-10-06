@@ -1157,6 +1157,16 @@ def test_abono_uuid_duplicado_un_solo_movimiento(client):
     db.close()
 
 
+def test_abono_uuid_invalida_422(client):
+    """Revision P6: uuid de movimiento con formato invalido -> 422."""
+    corte_id = _corte_para_abonos(client, "barbero_t35g")
+    respuesta = _abonar(
+        client, _token_para(client, "barbero_t35g"), corte_id, "cliente", 10,
+        {"uuid": "no-es-uuid"},
+    )
+    assert respuesta.status_code == 422
+
+
 def test_abono_corte_ajeno_404(client):
     """T35: titularidad — corte ajeno → 404."""
     from app.models.usuario import Rol as RolModelo
