@@ -1,19 +1,9 @@
-from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.models.corte import Corte
 from app.models.servicio import Servicio
 from app.models.usuario import Usuario
-
-
-def calcular_partes(precio: Decimal, porcentaje_barbero: Decimal) -> tuple[Decimal, Decimal]:
-    """
-    Calcula la parte del barbero y la barbero.
-    El porcentaje se aplica SOLO al servicio (corte).
-    """
-    parte_barbero = (precio * porcentaje_barbero / Decimal("100")).quantize(Decimal("0.01"))
-    parte_barberia = (precio - parte_barbero).quantize(Decimal("0.01"))
-    return parte_barbero, parte_barberia
+from app.services.dinero_cortes import calcular_partes
 
 
 def crear_corte(
@@ -27,7 +17,12 @@ def crear_corte(
     if not servicio:
         raise ValueError("Servicio no encontrado o inactivo")
 
-    parte_barbero, parte_barberia = calcular_partes(servicio.precio, barbero.porcentaje_ganancia)
+    try:
+        parte_barbero, parte_barberia = calcular_partes(servicio.precio, barbero.porcentaje_ganancia)
+    except (TypeError, ValueError) as error:
+        # Toda entrada monetaria inválida (incluido un no-Decimal llegado
+        # desde almacenamiento) se rechaza con 400 en el router, nunca 500.
+        raise ValueError(str(error)) from error
 
     corte = Corte(
         barbero_id=barbero.id,
@@ -39,6 +34,8 @@ def crear_corte(
         metodo_pago=metodo_pago,
     )
     db.add(corte)
-    db.commit()
+    # Sin commit: la unidad de trabajo la posee el llamador (router online o
+    # sync), con un solo commit por operacion. Flush asigna el ID.
+    db.flush()
     db.refresh(corte)
     return corte

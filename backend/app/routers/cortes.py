@@ -68,6 +68,8 @@ def registrar_corte(
     """Registra un nuevo corte."""
     try:
         corte = crear_corte(db, barbero, datos.servicio_id, datos.metodo_pago)
+        db.commit()
+        db.refresh(corte)
         return corte
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
