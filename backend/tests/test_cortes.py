@@ -815,3 +815,40 @@ def test_listado_global_admin_contrato_completo(client):
     items = respuesta.json()
     assert len(items) == 1
     assert items[0]["parte_barberia"] == "50.00"
+
+
+def test_destino_admin_hacia_otro_admin_400(client):
+    """Decisión RF-2: el destino de un admin debe ser barbero, no otro admin."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t26", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "admin_t26a", RolModelo.ADMIN, Decimal("0"))
+    _crear_usuario(db, "admin_t26b", RolModelo.ADMIN, Decimal("0"))
+    otro_id = db.query(Usuario).filter(Usuario.usuario == "admin_t26b").first().id
+    db.close()
+
+    respuesta = _registrar_corte_admin(
+        client, _token_para(client, "admin_t26a"), servicio_id, otro_id
+    )
+    assert respuesta.status_code == 400
+    assert "barbero" in respuesta.json()["detail"].lower()
+
+
+def test_destino_propio_explicito_del_admin_201(client):
+    """Decisión RF-2: el admin puede indicarse a sí mismo (registro propio)."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t26c", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "admin_t26c", RolModelo.ADMIN, Decimal("0"))
+    propio_id = db.query(Usuario).filter(Usuario.usuario == "admin_t26c").first().id
+    db.close()
+
+    respuesta = _registrar_corte_admin(
+        client, _token_para(client, "admin_t26c"), servicio_id, propio_id
+    )
+    assert respuesta.status_code == 201
+    assert respuesta.json()["barbero_id"] == propio_id
