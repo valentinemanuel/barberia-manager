@@ -54,3 +54,43 @@ def registrar_abono(
     db.add(movimiento)
     db.flush()
     return movimiento
+
+
+def calcular_saldo(obligacion: Decimal, abonado: Decimal) -> dict:
+    """Saldo de un concepto: obligación − neto, con estado.
+
+    Sin excedentes ni unknown en este paquete (RF-21 parcial): el exceso
+    online se rechaza antes de llegar aquí (T39) y lo offline queda para sync.
+    """
+    restante = obligacion - abonado
+    if restante <= Decimal("0"):
+        estado = "pagado"
+    elif abonado > Decimal("0"):
+        estado = "parcial"
+    else:
+        estado = "pendiente"
+    centavo = Decimal("0.01")
+    return {
+        "obligacion": obligacion.quantize(centavo),
+        "abonado": abonado.quantize(centavo),
+        "restante": max(restante, Decimal("0")).quantize(centavo),
+        "estado": estado,
+    }
+
+
+def saldos_corte(db: Session, corte: Corte) -> dict:
+    """Saldos de ambos conceptos desde movimientos aceptados."""
+    movimientos = (
+        db.query(MovimientoCorte)
+        .filter(MovimientoCorte.corte_id == corte.id)
+        .all()
+    )
+    neto = {ConceptoMovimiento.CLIENTE: Decimal("0"), ConceptoMovimiento.COMISION: Decimal("0")}
+    for movimiento in movimientos:
+        neto[movimiento.concepto] += movimiento.importe
+    return {
+        "cliente": calcular_saldo(corte.precio, neto[ConceptoMovimiento.CLIENTE]),
+        "comision": calcular_saldo(
+            corte.parte_barbero, neto[ConceptoMovimiento.COMISION]
+        ),
+    }

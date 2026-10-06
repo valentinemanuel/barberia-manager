@@ -1185,6 +1185,51 @@ def test_barbero_no_envia_momento_en_abono_400(client):
     assert respuesta.status_code == 400
 
 
+def _saldos(client, token, corte_id):
+    return client.get(
+        f"/api/cortes/{corte_id}/saldos",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+
+def test_abono_no_mueve_otro_concepto(client):
+    """T36 (RF-18/19): abono cliente no altera saldo comisión y viceversa."""
+    corte_id = _corte_para_abonos(client, "barbero_t36")
+    token = _token_para(client, "barbero_t36")
+
+    assert _abonar(client, token, corte_id, "cliente", 40).status_code == 201
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["abonado"] == "40.00"
+    assert saldos["cliente"]["restante"] == "60.00"
+    assert saldos["cliente"]["estado"] == "parcial"
+    assert saldos["comision"]["abonado"] == "0.00"
+    assert saldos["comision"]["restante"] == "50.00"
+    assert saldos["comision"]["estado"] == "pendiente"
+
+    assert _abonar(client, token, corte_id, "comision", 50).status_code == 201
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["comision"]["estado"] == "pagado"
+    assert saldos["cliente"]["restante"] == "60.00"
+
+
+def test_saldar_restante_exacta_paga_sin_flags(client):
+    """T36 (RF-20): saldar el restante exacto cambia a pagado; no hay endpoint de pagado."""
+    corte_id = _corte_para_abonos(client, "barbero_t36b")
+    token = _token_para(client, "barbero_t36b")
+
+    assert _abonar(client, token, corte_id, "cliente", 100).status_code == 201
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["estado"] == "pagado"
+    assert saldos["cliente"]["restante"] == "0.00"
+
+    assert "parte_barberia" not in saldos["cliente"]
+    assert "parte_barberia" not in saldos["comision"]
+    r = client.post(
+        f"/api/cortes/{corte_id}/pagar", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert r.status_code in (404, 405)
+
+
 def test_reintentos_agotados_sin_efecto_residual(client):
     """P2-3 paquete 5: contención persistente → ReintentosAgotados, sin filas."""
     from app.models.operacion_corte import OperacionCorte

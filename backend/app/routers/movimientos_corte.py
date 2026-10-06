@@ -12,7 +12,7 @@ from app.dependencies import obtener_usuario_actual
 from app.models.corte import Corte, MetodoPago
 from app.models.finanzas_corte import ConceptoMovimiento
 from app.models.usuario import Rol, Usuario
-from app.services.movimiento_corte_service import registrar_abono
+from app.services.movimiento_corte_service import registrar_abono, saldos_corte
 
 router = APIRouter(prefix="/api/cortes", tags=["Movimientos"])
 
@@ -36,6 +36,18 @@ class MovimientoResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class SaldoConcepto(BaseModel):
+    obligacion: Decimal
+    abonado: Decimal
+    restante: Decimal
+    estado: str
+
+
+class SaldosResponse(BaseModel):
+    cliente: SaldoConcepto
+    comision: SaldoConcepto
 
 
 def _corte_propio_o_gestion(
@@ -91,3 +103,14 @@ def crear_movimiento(
     db.commit()
     db.refresh(movimiento)
     return movimiento
+
+
+@router.get("/{corte_id}/saldos", response_model=SaldosResponse)
+def obtener_saldos(
+    corte_id: int,
+    db: Session = Depends(get_db),
+    actor: Usuario = Depends(obtener_usuario_actual),
+):
+    """Saldos de cliente y comisión del corte (DTO personal, RF-21 parcial)."""
+    corte = _corte_propio_o_gestion(db, corte_id, actor)
+    return saldos_corte(db, corte)
