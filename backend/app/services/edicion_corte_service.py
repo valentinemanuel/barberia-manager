@@ -1,7 +1,9 @@
-"""Edición y anullación de cortes (paquete 7, RF-22–27/RF-42 parcial).
+"""Edición y anulación de cortes (paquete 7, RF-22–27/RF-42 parcial).
 
 Sin commit: la unidad de trabajo la posee el llamador.
 """
+from datetime import datetime
+
 from sqlalchemy.orm import Session
 
 from app.models.corte import Corte, MetodoPago
@@ -12,6 +14,24 @@ from app.services.dinero_cortes import calcular_partes
 
 class NoEncontrado(ValueError):
     """Recurso inexistente: el router lo vuelve 404 (sin revelar titularidad)."""
+
+
+def anular_corte(
+    db: Session,
+    *,
+    corte: Corte,
+    actor: Usuario,
+    motivo: str | None = None,
+) -> Corte:
+    """Anulación terminal (RF-27): conserva fila y movimientos, sin borrado.
+
+    No reactiva ni permite edición posterior (verificación en router T45).
+    """
+    corte.anulado_en = datetime.utcnow()
+    corte.anulado_motivo = motivo
+    corte.anulado_por = actor.id
+    db.flush()
+    return corte
 
 
 def editar_corte(

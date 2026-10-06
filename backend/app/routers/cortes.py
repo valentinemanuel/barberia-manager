@@ -10,6 +10,7 @@ from app.models.corte import Corte
 from app.models.usuario import Usuario, Rol
 from app.schemas.corte import (
     CobroInicial,
+    CorteAnular,
     CorteCrear,
     CorteEditar,
     CorteResponse,
@@ -18,6 +19,7 @@ from app.schemas.corte import (
 from app.services.corte_service import crear_corte
 from app.services.edicion_corte_service import (
     NoEncontrado,
+    anular_corte as aplicar_anulacion,
     editar_corte as aplicar_edicion,
 )
 from app.services.movimiento_corte_service import corte_bloqueado
@@ -219,6 +221,8 @@ def editar_corte_endpoint(
         raise HTTPException(status_code=404, detail="Corte no encontrado")
     if actor.rol != Rol.ADMIN and corte.barbero_id != actor.id:
         raise HTTPException(status_code=404, detail="Corte no encontrado")
+    if corte.anulado_en is not None:
+        raise HTTPException(status_code=409, detail="Corte anulado: no admite edición")
     if actor.rol != Rol.ADMIN and corte_bloqueado(db, corte):
         raise HTTPException(
             status_code=409, detail="Corte bloqueado: tiene pagos registrados"
@@ -234,6 +238,41 @@ def editar_corte_endpoint(
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    db.commit()
+    db.refresh(corte)
+    return corte
+
+
+@router.post("/{corte_id}/anular", response_model=CortePersonal)
+def anular_corte_endpoint(
+    corte_id: int,
+    datos: CorteAnular,
+    db: Session = Depends(get_db),
+    actor: Usuario = Depends(obtener_usuario_actual),
+):
+    """Anula un corte conservando fila y movimientos (RF-27, terminal).
+
+    El barbero solo anula propios no bloqueados; el admin anula bloqueados
+    con motivo obligatorio (RF-26). Nunca reactiva ni admite edición posterior.
+    """
+    corte = db.query(Corte).filter(Corte.id == corte_id).first()
+    if not corte:
+        raise HTTPException(status_code=404, detail="Corte no encontrado")
+    if actor.rol != Rol.ADMIN and corte.barbero_id != actor.id:
+        raise HTTPException(status_code=404, detail="Corte no encontrado")
+    if corte.anulado_en is not None:
+        raise HTTPException(status_code=409, detail="Corte anulado: ya está anulado")
+    bloqueado = corte_bloqueado(db, corte)
+    if actor.rol != Rol.ADMIN and bloqueado:
+        raise HTTPException(
+            status_code=409, detail="Corte bloqueado: tiene pagos registrados"
+        )
+    if actor.rol == Rol.ADMIN and bloqueado and not datos.motivo:
+        raise HTTPException(
+            status_code=400,
+            detail="Anular un corte bloqueado exige motivo",
+        )
+    corte = aplicar_anulacion(db, corte=corte, actor=actor, motivo=datos.motivo)
     db.commit()
     db.refresh(corte)
     return corte

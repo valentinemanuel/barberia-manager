@@ -1429,6 +1429,44 @@ def test_admin_edita_bloqueado_200(client):
     assert respuesta.status_code == 200
 
 
+def _anular_corte(client, token, corte_id, motivo=None):
+    body = {"motivo": motivo} if motivo is not None else {}
+    return client.post(
+        f"/api/cortes/{corte_id}/anular",
+        json=body,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+
+def test_anular_propio_no_bloqueado_con_marca(client):
+    """T45: anulación propia con marca visible; sin reactivación."""
+    corte_id = _corte_para_abonos(client, "barbero_t45")
+    token = _token_para(client, "barbero_t45")
+
+    r = _anular_corte(client, token, corte_id)
+    assert r.status_code == 200
+    assert r.json()["anulado_en"] is not None
+
+    historial = client.get(
+        "/api/cortes/mi/historial", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert historial.json()[0]["anulado_en"] is not None
+
+    assert _anular_corte(client, token, corte_id).status_code == 409
+    assert _editar_corte(client, token, corte_id, {"metodo_pago": "tarjeta"}).status_code == 409
+
+
+def test_anular_bloqueado_barbero_409(client):
+    """T45 (split T44): el barbero no anula bloqueados."""
+    corte_id = _corte_para_abonos(client, "barbero_t45b")
+    token = _token_para(client, "barbero_t45b")
+
+    assert _abonar(client, token, corte_id, "cliente", 10).status_code == 201
+    r = _anular_corte(client, token, corte_id)
+    assert r.status_code == 409
+    assert "bloqueado" in r.json()["detail"].lower()
+
+
 def test_abono_mayor_al_restante_400(client):
     """T39: exceso online se rechaza sin crear movimiento."""
     from app.models.finanzas_corte import MovimientoCorte

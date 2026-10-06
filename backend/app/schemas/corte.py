@@ -40,6 +40,12 @@ class CorteEditar(BaseModel):
     metodo_pago: Optional[MetodoPago] = None
 
 
+class CorteAnular(BaseModel):
+    """Anulación (paquete 7, RF-27): motivo obligatorio para admin en bloqueado."""
+
+    motivo: Optional[str] = None
+
+
 class CorteResponse(BaseModel):
     id: int
     barbero_id: int
@@ -51,6 +57,8 @@ class CorteResponse(BaseModel):
     metodo_pago: MetodoPago
     fecha: datetime
     sincronizado: bool
+    anulado_en: Optional[datetime] = None
+    anulado_motivo: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -70,6 +78,8 @@ class CortePersonal(BaseModel):
     metodo_pago: MetodoPago
     fecha: datetime
     sincronizado: bool
+    anulado_en: Optional[datetime] = None
+    anulado_motivo: Optional[str] = None
 
     class Config:
         from_attributes = True
