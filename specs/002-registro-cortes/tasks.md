@@ -464,7 +464,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-16–21, RF-37, bloque
 
 ### Tareas en orden de dependencia
 
-- [ ] **T34. Tabla de movimientos + migración 003.** RF-16/RF-17 (base), RNF-3.
+- [x] **T34. Tabla de movimientos + migración 003.** RF-16/RF-17 (base), RNF-3.
   - Dependencias: ninguna dentro del paquete.
   - Tests primero: `history` muestra `003`; `upgrade` en TEMP vacía crea solo `movimientos_corte`; en TEMP con legacy + `create_all` previo no toca nada (guard); repetir no-op.
   - Implementar: modelo + revisión solo-creación con guard de existencia.
@@ -515,7 +515,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-16–21, RF-37, bloque
 
 | Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
 |---|---|---|---|
-| T34 |  |  |  |
+| T34 | Rojo real: `history` mostraba solo hasta `002` | Verde: `history` con `003`; TEMP vacía crea las 2 tablas nuevas; TEMP legacy + `create_all` dispara ambos guards sin tocar nada; repetir no-op | `upgrade` solo en TEMP; `barberia.db` hash estable en baseline T27 (`b691f8c5…`); prohibido aplicar contra base real. Modelo `finanzas_corte.py` (UUID única, concepto/tipo, importe, autor, método, momento nullable, registrado UTC) + `__init__` + revisión `003` con guard. |
 | T35 |  |  |  |
 | T36 |  |  |  |
 | T37 |  |  |  |
