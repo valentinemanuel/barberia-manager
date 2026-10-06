@@ -482,7 +482,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-16–21, RF-37, bloque
   - Implementar: saldos por concepto desde movimientos aceptados; endpoint separado `GET /cortes/{id}/saldos` con DTO personal (sin `parte_barberia`); el detalle no se toca.
   - Hecho cuando: tests en verde con ambos conceptos evolucionando por separado.
 
-- [ ] **T37. Totales, restante y estados.** RF-21 (parcial, sin unknown/excedentes/revisión).
+- [x] **T37. Totales, restante y estados.** RF-21 (parcial, sin unknown/excedentes/revisión).
   - Dependencias: T35–T36.
   - Tests primero: dos abonos 30+70 sobre 100 → total 100, restante 0, estado pagado; un abono 30 → parcial con restante 70; sin abonos → pendiente.
   - Implementar: cálculo puro de saldos (función testeable) + exposición en lectura.
@@ -518,7 +518,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-16–21, RF-37, bloque
 | T34 | Rojo real: `history` mostraba solo hasta `002` | Verde: `history` con `003`; TEMP vacía crea las 2 tablas nuevas; TEMP legacy + `create_all` dispara ambos guards sin tocar nada; repetir no-op | `upgrade` solo en TEMP; `barberia.db` hash estable en baseline T27 (`b691f8c5…`); prohibido aplicar contra base real. Modelo `finanzas_corte.py` (UUID única, concepto/tipo, importe, autor, método, momento nullable, registrado UTC) + `__init__` + revisión `003` con guard. |
 | T35 | Rojo real: 4 failed (rutas inexistentes → 404) | Verde: `5 passed` nuevos | Desde `backend`: pytest por archivo. DIVULGACIÓN (mismo mecanismo T27): `barberia.db` ganó la tabla vacía `movimientos_corte` por `create_all` histórico (nuevo baseline `4c7f1b19…`; 0 filas, legacy y datos intactos: 1 admin, resto vacío). Solo `movimiento_corte_service.py` + `movimientos_corte.py` (router) + `main.py` (registro) + `test_cortes.py`. Modelos Pydantic en el router (sin archivo schema nuevo, dentro del alcance). |
 | T36 | Rojo real: 2 failed (sin endpoint `/saldos`) + 1 ajuste cosmético (`'0'` vs `'0.00'`) | Verde: `73 passed` (3 archivos) | DB estable en baseline T35; solo `movimiento_corte_service.py` + `movimientos_corte.py` + `test_cortes.py`. Cambio: `calcular_saldo`/`saldos_corte` puros + `GET /{id}/saldos` personal (obligación = precio/parte_barbero, sin `parte_barberia`); presentación quantizada al centavo (valores exactos por construcción); sin endpoint de "marcar pagado" (404/405 verificado). |
-| T37 |  |  |  |
+| T37 | Verde inicial real (cubierto por T36; sin rojo artificial ni cambio productivo) | Mismo verde | Matriz 0/30/30+70 → pendiente/parcial-70/pagado-0. Unknown/excedentes explícitamente fuera. Solo `test_cortes.py` + este documento. |
 | T38 |  |  |  |
 | T39 |  |  |  |
 | T40 |  |  |  |

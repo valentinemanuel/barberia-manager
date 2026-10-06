@@ -1230,6 +1230,29 @@ def test_saldar_restante_exacta_paga_sin_flags(client):
     assert r.status_code in (404, 405)
 
 
+def test_matriz_pendiente_parcial_pagado(client):
+    """T37: 0 → pendiente; 30 → parcial/70; 30+70 → pagado/0."""
+    corte_id = _corte_para_abonos(client, "barbero_t37")
+    token = _token_para(client, "barbero_t37")
+
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["estado"] == "pendiente"
+    assert saldos["cliente"]["abonado"] == "0.00"
+    assert saldos["cliente"]["restante"] == "100.00"
+
+    assert _abonar(client, token, corte_id, "cliente", 30).status_code == 201
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["estado"] == "parcial"
+    assert saldos["cliente"]["abonado"] == "30.00"
+    assert saldos["cliente"]["restante"] == "70.00"
+
+    assert _abonar(client, token, corte_id, "cliente", 70).status_code == 201
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["estado"] == "pagado"
+    assert saldos["cliente"]["abonado"] == "100.00"
+    assert saldos["cliente"]["restante"] == "0.00"
+
+
 def test_reintentos_agotados_sin_efecto_residual(client):
     """P2-3 paquete 5: contención persistente → ReintentosAgotados, sin filas."""
     from app.models.operacion_corte import OperacionCorte
