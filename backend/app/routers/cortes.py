@@ -77,6 +77,12 @@ def registrar_corte(
             destino = db.query(Usuario).filter(Usuario.id == datos.barbero_id).first()
             if not destino:
                 raise HTTPException(status_code=404, detail="Barbero no encontrado")
+            # Decisión RF-2: el destino de un tercero debe ser barbero; el
+            # propio siempre está permitido (registro propio del admin).
+            if destino.id != actor.id and destino.rol != Rol.BARBERO:
+                raise HTTPException(
+                    status_code=400, detail="El destinatario debe ser un barbero"
+                )
         momento = datos.momento_real
         if momento is not None:
             if actor.rol != Rol.ADMIN:
