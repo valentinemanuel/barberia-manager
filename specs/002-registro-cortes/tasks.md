@@ -297,7 +297,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-1/RF-2/RF-8/RF-10 onli
   - Implementar: `momento_real: Optional[datetime]` en `CorteCrear`; validación pasado/futuro; el servicio usa el momento o el automático.
   - Hecho cuando: tests API en verde, sin precio/porcentaje manual en ningún caso.
 
-- [ ] **T22. Snapshot con valores actuales del destinatario.** RF-5 (parcial), RF-6.
+- [x] **T22. Snapshot con valores actuales del destinatario.** RF-5 (parcial), RF-6.
   - Dependencias: T20–T21.
   - Tests primero: admin registra retroactivo para barbero con % distinto → reparto con el porcentaje **actual del destinatario**, no del admin; cambio posterior de catálogo/porcentaje no altera el corte (ya probado en T11, regresión).
   - Implementar: verificar que el reparto usa precio actual del servicio + porcentaje actual del destinatario (el código ya lo hace; ajustar solo si un test revela lo contrario, sin rojo artificial).
@@ -325,7 +325,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-1/RF-2/RF-8/RF-10 onli
 |---|---|---|---|
 | T20 | Rojo real: 4 failed (el body ignoraba `barbero_id`; sin 403/404) | Verde: `26 passed` (`test_cortes.py` + `test_sync_roles.py`) | Desde `backend`: pytest por archivo. `barberia.db` hash idéntico; solo `schemas/corte.py` + `corte_service.py` + `routers/cortes.py` + `test_cortes.py`. Cambio: `barbero_id` opcional solo admin (403 barbero, 404 inexistente, inactivo con % permitido); reparto con valores del destinatario; registro propio intacto; sync sin destino sigue propio. |
 | T21 | Rojo real: 3 failed (momento ignorado: 201 con fecha automática en vez de 2020; sin 400 a futuro ni a barbero) | Verde: `30 passed` (`test_cortes.py` + `test_sync_roles.py`) | Desde `backend`: pytest por archivo. `barberia.db` hash idéntico; solo `schemas/corte.py` + `corte_service.py` + `routers/cortes.py` + `test_cortes.py`. Cambio: `momento_real` opcional solo admin (pasado sin límite, futuro 400, barbero 400, tz normalizada a UTC naive); servicio lo guarda en `fecha`. |
-| T22 |  |  |  |
+| T22 | Verde inicial real (cubierto por implementación T20; sin rojo artificial ni cambio productivo) | Mismo verde | Test: admin retroactivo 2021 para barbero 30% sobre 200.00 → `60.00` + fecha conservada (no el 0% del admin). Solo `test_cortes.py` + este documento. |
 | T23 |  |  |  |
 | T24 |  |  |  |
 | T25 |  |  |  |

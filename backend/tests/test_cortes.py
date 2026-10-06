@@ -724,3 +724,34 @@ def test_registro_sin_momento_usa_fecha_automatica(client):
     assert respuesta.status_code == 201
     fecha = respuesta.json()["fecha"]
     assert fecha[:10] == antes.strftime("%Y-%m-%d")
+
+
+def test_reparto_usa_valores_actuales_del_destinatario(client):
+    """T22 (RF-5 parcial): admin retroactivo para barbero 30% usa el % del
+    destino (60.00/140.00 sobre 200.00), no el 0% del admin; fecha conservada."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t22", Decimal("30"), Decimal("200.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "admin_t22", RolModelo.ADMIN, Decimal("0"))
+    dest_id = db.query(Usuario).filter(Usuario.usuario == "barbero_t22").first().id
+    db.close()
+
+    respuesta = client.post(
+        "/api/cortes/",
+        json={
+            "servicio_id": servicio_id,
+            "metodo_pago": "tarjeta",
+            "barbero_id": dest_id,
+            "momento_real": "2021-03-15T09:30:00",
+        },
+        headers={"Authorization": f"Bearer {_token_para(client, 'admin_t22')}"},
+    )
+    assert respuesta.status_code == 201
+    data = respuesta.json()
+    assert data["barbero_id"] == dest_id
+    assert data["precio"] == "200.00"
+    assert Decimal(data["porcentaje_barbero"]) == Decimal("30")
+    assert data["parte_barbero"] == "60.00"
+    assert data["fecha"].startswith("2021-03-15T09:30:00")
