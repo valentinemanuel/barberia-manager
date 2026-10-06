@@ -1253,6 +1253,68 @@ def test_matriz_pendiente_parcial_pagado(client):
     assert saldos["cliente"]["restante"] == "0.00"
 
 
+def _registrar_con_cobro(client, token, servicio_id, cobro, importe=None):
+    body = {
+        "servicio_id": servicio_id,
+        "metodo_pago": "efectivo",
+        "cobro_inicial": cobro,
+    }
+    if importe is not None:
+        body["importe_cobro"] = importe
+    return client.post(
+        "/api/cortes/", json=body, headers={"Authorization": f"Bearer {token}"}
+    )
+
+
+def test_cobro_inicial_pendiente_sin_abono(client):
+    """T38: pendiente no crea abono."""
+    from app.models.finanzas_corte import MovimientoCorte
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t38a", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+
+    r = _registrar_con_cobro(client, _token_para(client, "barbero_t38a"), servicio_id, "pendiente")
+    assert r.status_code == 201
+    db = TestingSessionLocal()
+    assert db.query(MovimientoCorte).count() == 0
+    db.close()
+
+
+def test_cobro_inicial_parcial_y_completo(client):
+    """T38: parcial crea el importe real; completo, el precio mostrado."""
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t38b", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+    token = _token_para(client, "barbero_t38b")
+
+    r = _registrar_con_cobro(client, token, servicio_id, "parcial", 40)
+    assert r.status_code == 201
+    saldos = _saldos(client, token, r.json()["id"]).json()
+    assert saldos["cliente"]["abonado"] == "40.00"
+    assert saldos["comision"]["estado"] == "pendiente"
+
+    r = _registrar_con_cobro(client, token, servicio_id, "completo")
+    assert r.status_code == 201
+    saldos = _saldos(client, token, r.json()["id"]).json()
+    assert saldos["cliente"]["abonado"] == "100.00"
+    assert saldos["cliente"]["estado"] == "pagado"
+    assert saldos["comision"]["estado"] == "pendiente"
+
+
+def test_cobro_parcial_sin_importe_400(client):
+    """T38: parcial exige importe."""
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t38c", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+
+    r = _registrar_con_cobro(client, _token_para(client, "barbero_t38c"), servicio_id, "parcial")
+    assert r.status_code == 400
+
+
 def test_reintentos_agotados_sin_efecto_residual(client):
     """P2-3 paquete 5: contención persistente → ReintentosAgotados, sin filas."""
     from app.models.operacion_corte import OperacionCorte
