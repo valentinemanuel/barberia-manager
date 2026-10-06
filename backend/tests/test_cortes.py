@@ -317,3 +317,37 @@ def test_usuario_acepta_porcentaje_canonico_sin_normalizar():
     assert UsuarioCrear(**_payload_usuario_crear("50.25")).porcentaje_ganancia == Decimal("50.25")
     assert UsuarioCrear(**_payload_usuario_crear(100)).porcentaje_ganancia == Decimal("100")
     assert UsuarioCrear(**_payload_usuario_crear(0)).porcentaje_ganancia == Decimal("0")
+
+
+def test_corte_conserva_snapshot_ante_cambio_posterior_de_porcentaje(client):
+    """T11 (RF-5 parcial): el corte conserva precio/porcentaje/reparto aplicados;
+    cambiar despues el porcentaje del barbero no lo altera."""
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t11", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+
+    response = _login_y_registrar_corte(client, "barbero_t11", servicio_id)
+    assert response.status_code == 201
+    corte_id = response.json()["id"]
+
+    db = TestingSessionLocal()
+    token_resp = client.post(
+        "/api/auth/login", data={"username": "barbero_t11", "password": "pass"}
+    )
+    token = token_resp.json()["access_token"]
+    db.query(Usuario).filter(Usuario.usuario == "barbero_t11").update(
+        {"porcentaje_ganancia": Decimal("60")}
+    )
+    db.commit()
+    db.close()
+
+    detalle = client.get(
+        f"/api/cortes/{corte_id}", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert detalle.status_code == 200
+    data = detalle.json()
+    assert data["precio"] == "100.00"
+    assert Decimal(data["porcentaje_barbero"]) == Decimal("50")
+    assert data["parte_barbero"] == "50.00"
+    assert data["parte_barberia"] == "50.00"
