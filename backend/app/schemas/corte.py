@@ -38,6 +38,9 @@ class CorteEditar(BaseModel):
 
     servicio_id: Optional[int] = None
     metodo_pago: Optional[MetodoPago] = None
+    # Motivo obligatorio para admin sobre bloqueado (RF-26); se exige pero
+    # su journal completo corresponde al paquete de auditoría.
+    motivo: Optional[str] = None
 
 
 class CorteAnular(BaseModel):

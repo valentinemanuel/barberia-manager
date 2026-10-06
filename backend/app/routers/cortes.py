@@ -227,6 +227,15 @@ def editar_corte_endpoint(
         raise HTTPException(
             status_code=409, detail="Corte bloqueado: tiene pagos registrados"
         )
+    if (
+        actor.rol == Rol.ADMIN
+        and corte_bloqueado(db, corte)
+        and not datos.motivo
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Corregir un corte bloqueado exige motivo",
+        )
     try:
         corte = aplicar_edicion(
             db,

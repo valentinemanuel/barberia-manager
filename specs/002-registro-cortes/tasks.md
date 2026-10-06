@@ -584,7 +584,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-22–27, RF-42, RF-46 
   - Implementar: `POST /{id}/anular` (motivo opcional barbero) + marca `anulado` en DTO personal.
   - Hecho cuando: tests en verde y el anulado nunca vuelve a activo por edición.
 
-- [ ] **T46. Corrección admin con motivo.** RF-26 (parcial).
+- [x] **T46. Corrección admin con motivo.** RF-26 (parcial).
   - Dependencias: T44–T45.
   - Tests primero: admin edita/anula bloqueado sin motivo → 400; con motivo → 200 y conserva motivo/autor/momento; admin sobre ajeno-activo también con motivo.
   - Implementar: `motivo` obligatorio para admin en bloqueado/anulado; persistencia en columnas de anulación (edición admin: motivo exigido pero valores anteriores visibles en fila; journal completo en paquete de auditoría).
@@ -615,7 +615,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-22–27, RF-42, RF-46 
 | T43 | Rojo real: 3 failed (405 sin PATCH) + `AmbiguousForeignKeysError` por la nueva FK `anulado_por` | Verde: `84 passed` (3 archivos) | DB estable en baseline; `models/corte.py` (relationship con `foreign_keys`) + `edicion_corte_service.py` + `schemas/corte.py` (`CorteEditar`) + `routers/cortes.py` (PATCH) + `test_cortes.py`. Cambio: método conserva importes, servicio recalcula actuales; inexistente 404, inactivo 400, ajeno 404, sin cambios 400. |
 | T44 | Rojo real: barbero editaba bloqueado (200 en vez de 409) | Verde: `63 passed` (2 archivos) | DB estable; solo `routers/cortes.py` + `test_cortes.py`. Cambio: enforcement con `corte_bloqueado()` en PATCH (solo barbero; admin 200); abono posterior sigue 201 (RF-25). Nota honesta: el 409 de POST anular va en T45 (la ruta aún no existe). |
 | T45 | Rojo real: doble 404 (sin ruta anular) | Verde: `88 passed` (3 archivos) | DB estable; `edicion_corte_service.py` (`anular_corte`) + `schemas/corte.py` (`CorteAnular`, marca en ambos DTOs) + `routers/cortes.py` (POST anular + check en PATCH) + `test_cortes.py`. Cambio: barbero anula propio no bloqueado; bloqueado → 409 (cierra split T44); anulado → 409 siempre (sin reactivación); marca visible en historial. |
-| T46 |  |  |  |
+| T46 | Rojo real: admin editaba bloqueado sin motivo (200 en vez de 400) | Verde: `66 passed` (2 archivos) | DB estable; `schemas/corte.py` (`motivo` en `CorteEditar`) + `routers/cortes.py` + `test_cortes.py`. Cambio: motivo obligatorio admin en bloqueado (edición y anulación); anulación lo persiste (autor/momento/motivo), edición lo exige sin journal (auditoría futura). Migración honesta: test T44 actualizado al contrato nuevo. |
 | T47 |  |  |  |
 | T48 |  |  |  |
 | T49 |  |  |  |

@@ -1423,8 +1423,11 @@ def test_admin_edita_bloqueado_200(client):
     assert _abonar(
         client, _token_para(client, "barbero_t44b"), corte_id, "cliente", 10
     ).status_code == 201
-    respuesta = _editar_corte(
-        client, _token_para(client, "admin_t44"), corte_id, {"metodo_pago": "tarjeta"}
+    # T46: el admin en bloqueado exige motivo (contrato actualizado).
+    respuesta = client.patch(
+        f"/api/cortes/{corte_id}",
+        json={"metodo_pago": "tarjeta", "motivo": "ajuste administrativo"},
+        headers={"Authorization": f"Bearer {_token_para(client, 'admin_t44')}"},
     )
     assert respuesta.status_code == 200
 
@@ -1465,6 +1468,37 @@ def test_anular_bloqueado_barbero_409(client):
     r = _anular_corte(client, token, corte_id)
     assert r.status_code == 409
     assert "bloqueado" in r.json()["detail"].lower()
+
+
+def test_admin_corrige_bloqueado_exige_motivo(client):
+    """T46 (RF-26): admin en bloqueado sin motivo → 400; con motivo → 200."""
+    from app.models.usuario import Rol as RolModelo
+
+    corte_id = _corte_para_abonos(client, "barbero_t46")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t46", RolModelo.ADMIN)
+    db.close()
+    token_admin = _token_para(client, "admin_t46")
+    token_barbero = _token_para(client, "barbero_t46")
+
+    assert _abonar(client, token_barbero, corte_id, "cliente", 10).status_code == 201
+
+    r = _editar_corte(client, token_admin, corte_id, {"metodo_pago": "tarjeta"})
+    assert r.status_code == 400
+    r = client.patch(
+        f"/api/cortes/{corte_id}",
+        json={"metodo_pago": "tarjeta", "motivo": "corrige método mal cargado"},
+        headers={"Authorization": f"Bearer {token_admin}"},
+    )
+    assert r.status_code == 200
+    assert r.json()["metodo_pago"] == "tarjeta"
+
+    r = _anular_corte(client, token_admin, corte_id)
+    assert r.status_code == 400
+    r = _anular_corte(client, token_admin, corte_id, motivo="duplicado operativo")
+    assert r.status_code == 200
+    assert r.json()["anulado_motivo"] == "duplicado operativo"
+    assert r.json()["anulado_en"] is not None
 
 
 def test_abono_mayor_al_restante_400(client):
