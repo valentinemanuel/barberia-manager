@@ -242,7 +242,7 @@ Decisión del gate registrada: se crea el DTO personal `CortePersonal` (= `Corte
   - Implementar: retirar el cálculo de `parte_barberia` en el guardado offline de `RegistroCortes.tsx` (conservar `parte_barbero` estimada) y el campo en `CorteLocal` (`db.ts`) si nada más lo lee; el tipo de admin (`DashboardAdmin.tsx`) no se toca.
   - Hecho cuando: `npm run build` en verde y ningún código de barbero referencia `parte_barberia`.
 
-- [ ] **T19. Regresión y cierre del paquete.** RF-11/RF-14/RF-15 (parciales), RNF-3/RNF-5/RNF-6.
+- [x] **T19. Regresión y cierre del paquete.** RF-11/RF-14/RF-15 (parciales), RNF-3/RNF-5/RNF-6.
   - Dependencias: T14–T18.
   - Ejecutar por archivo las suites tocadas (`test_cortes.py`, `test_roles_permisos.py`, `test_sync_roles.py`, `test_usuarios_auditoria.py`) + suite aislada del paquete 1, todo en verde, con precaución DB real registrada; `npm run build` en verde.
   - Registrar comandos/resultados en la evidencia de abajo y actualizar el estado sin declarar implementada la spec completa. El cierre requiere revisión independiente (`sdd-reviewer`) y no autoriza paquete 4 ni declara el gate de otros paquetes.
@@ -257,4 +257,4 @@ Decisión del gate registrada: se crea el DTO personal `CortePersonal` (= `Corte
 | T16 | Rojo real: ausencia de `parte_barberia` falló en detalle/registro con `CorteResponse` | Verde: `44 passed` (3 archivos) | Efecto colateral honesto: 4 assertions viejas (T7/T11/legacy) esperaban el campo en la API y se migraron al contrato nuevo (el resto exacto se verifica en fila DB + suite aislada). `barberia.db` hash idéntico; solo `routers/cortes.py` + `test_cortes.py`. Cambio: `response_model=CortePersonal` en detalle y registro; 404 ajeno intacto; admin conserva listado + reportes. |
 | T17 | Verde inicial real: contratos ya limpios tras T15–T16 (sin rojo artificial ni cambio productivo) | Mismo verde | Sensibilidad del detector verificada una vez sin commitear: detecta `parte_barberia` en `CorteResponse` (contrato admin). Recorre registro/historial/detalle/3 resúmenes. Solo `test_cortes.py` + este documento. |
 | T18 | Rojo: grep hallaba `parte_barberia` en `db.ts` y `RegistroCortes.tsx` (código de barbero) | Verde: `npm run build` (tsc + vite) OK; grep limpio en código de barbero | Retirados cálculo offline y campo `CorteLocal`; tipo de admin intacto; filas Dexie viejas con el campo se ignoran sin migrar (propiedad extra tolerada). Solo `db.ts` + `RegistroCortes.tsx` + este documento. |
-| T19 |  |  |  |
+| T19 | Sin rojo: solo verificación final, sin cambios productivos nuevos | Verde: `49 + 2 + 8 + 10 + 2` por archivo (toda la suite backend) + `167 passed` aislada + `npm run build` OK | `barberia.db` hash idéntico (`3fe8caa6…f924a9`); `git status` solo este documento. Paquete 3 completo en cobertura parcial, sin declarar spec implementada; cierre pendiente de revisión independiente (`sdd-reviewer`), que no autoriza paquete 4. |
