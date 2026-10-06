@@ -225,7 +225,7 @@ Decisión del gate registrada: se crea el DTO personal `CortePersonal` (= `Corte
   - Implementar: `response_model=list[CortePersonal]` en `mis_cortes`.
   - Hecho cuando: tests API en verde y el listado global de admin sigue devolviendo el contrato completo.
 
-- [ ] **T16. Detalle y registro con DTO personal.** RF-11/RF-14/RF-15 (parciales).
+- [x] **T16. Detalle y registro con DTO personal.** RF-11/RF-14/RF-15 (parciales).
   - Dependencias: T14.
   - Tests primero: `GET /{id}` propio y `POST /` responden sin `parte_barberia`; `GET /{id}` ajeno como barbero sigue 404 (regresión RF-14); el admin conserva listado global + reportes para la parte de la barbería (decisión registrada arriba).
   - Implementar: `response_model=CortePersonal` en `obtener_corte` y `registrar_corte`.
@@ -254,7 +254,7 @@ Decisión del gate registrada: se crea el DTO personal `CortePersonal` (= `Corte
 |---|---|---|---|
 | T14 | Rojo real: `ImportError: cannot import name 'CortePersonal'` | Verde: `14 passed` en `tests/test_cortes.py` | Desde `backend`: `python -m pytest tests/test_cortes.py -q`. Schema-level sin DB; `barberia.db` hash idéntico (`3fe8caa6…f924a9`); solo `schemas/corte.py` + `test_cortes.py`. Cambio: `CortePersonal` agregado, `CorteResponse` intacto. |
 | T15 | Rojo real: 2 failed (`"parte_barberia" not in items[0]` con `CorteResponse`) | Verde: `39 passed` (`test_cortes.py` + `test_roles_permisos.py`) | Desde `backend`: pytest por archivo. `barberia.db` hash idéntico; solo `routers/cortes.py` + `test_cortes.py`. Cambio: `response_model=list[CortePersonal]` en `mis_cortes`; listado global admin intacto. |
-| T16 |  |  |  |
+| T16 | Rojo real: ausencia de `parte_barberia` falló en detalle/registro con `CorteResponse` | Verde: `44 passed` (3 archivos) | Efecto colateral honesto: 4 assertions viejas (T7/T11/legacy) esperaban el campo en la API y se migraron al contrato nuevo (el resto exacto se verifica en fila DB + suite aislada). `barberia.db` hash idéntico; solo `routers/cortes.py` + `test_cortes.py`. Cambio: `response_model=CortePersonal` en detalle y registro; 404 ajeno intacto; admin conserva listado + reportes. |
 | T17 |  |  |  |
 | T18 |  |  |  |
 | T19 |  |  |  |

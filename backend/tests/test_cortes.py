@@ -80,9 +80,10 @@ def test_crear_corte_calcula_porcentaje(client):
     )
     assert response.status_code == 201
     data = response.json()
-    # T13: comparacion Decimal exacta, sin floats.
+    # T13/T16: comparacion Decimal exacta, sin floats; el DTO personal
+    # ya no expone parte_barberia (paquete 3).
     assert data["parte_barbero"] == "50.00"
-    assert data["parte_barberia"] == "50.00"
+    assert "parte_barberia" not in data
 
     db.close()
 
@@ -136,7 +137,7 @@ def test_crear_corte_reparto_exactitud_centavo(client):
     assert response.status_code == 201
     data = response.json()
     assert data["parte_barbero"] == "50.00"
-    assert data["parte_barberia"] == "50.00"
+    assert "parte_barberia" not in data
 
 
 def test_crear_corte_redondeo_matematico_mitad_hacia_arriba(client):
@@ -150,7 +151,7 @@ def test_crear_corte_redondeo_matematico_mitad_hacia_arriba(client):
     assert response.status_code == 201
     data = response.json()
     assert data["parte_barbero"] == "0.03"
-    assert data["parte_barberia"] == "0.02"
+    assert "parte_barberia" not in data
 
 
 def test_crear_corte_rechaza_precio_con_mas_de_dos_decimales():
@@ -350,7 +351,13 @@ def test_corte_conserva_snapshot_ante_cambio_posterior_de_porcentaje(client):
     assert data["precio"] == "100.00"
     assert Decimal(data["porcentaje_barbero"]) == Decimal("50")
     assert data["parte_barbero"] == "50.00"
-    assert data["parte_barberia"] == "50.00"
+    # T16: la API personal ya no expone parte_barberia, pero la fila
+    # conserva el resto exacto (modelo intacto).
+    assert "parte_barberia" not in data
+    db = TestingSessionLocal()
+    fila = db.query(Corte).filter(Corte.id == corte_id).first()
+    assert fila.parte_barberia == Decimal("50.00")
+    db.close()
 
 
 def _payload_servicio_crear(precio):
@@ -486,3 +493,43 @@ def test_historial_admin_ve_solo_lo_propio(client):
     admin_id = db.query(Usuario).filter(Usuario.usuario == "admin_t15").first().id
     db.close()
     assert items[0]["barbero_id"] == admin_id
+
+
+def test_detalle_y_registro_sin_parte_barberia(client):
+    """T16: detalle propio y registro responden sin parte_barberia."""
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t16a", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+
+    registro = _login_y_registrar_corte(client, "barbero_t16a", servicio_id)
+    assert registro.status_code == 201
+    assert "parte_barberia" not in registro.json()
+
+    detalle = client.get(
+        f"/api/cortes/{registro.json()['id']}",
+        headers={"Authorization": f"Bearer {_token_para(client, 'barbero_t16a')}"},
+    )
+    assert detalle.status_code == 200
+    assert "parte_barberia" not in detalle.json()
+    assert detalle.json()["parte_barbero"] == "50.00"
+
+
+def test_detalle_ajeno_sigue_404(client):
+    """T16 (RF-14 regresión): el detalle ajeno sigue 404 para el barbero."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t16b", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "barbero_t16c", RolModelo.BARBERO)
+    db.close()
+
+    registro = _login_y_registrar_corte(client, "barbero_t16b", servicio_id)
+    corte_id = registro.json()["id"]
+
+    detalle = client.get(
+        f"/api/cortes/{corte_id}",
+        headers={"Authorization": f"Bearer {_token_para(client, 'barbero_t16c')}"},
+    )
+    assert detalle.status_code == 404

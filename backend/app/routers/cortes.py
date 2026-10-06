@@ -42,7 +42,7 @@ def mis_cortes(
     )
 
 
-@router.get("/{corte_id}", response_model=CorteResponse)
+@router.get("/{corte_id}", response_model=CortePersonal)
 def obtener_corte(
     corte_id: int,
     db: Session = Depends(get_db),
@@ -59,7 +59,7 @@ def obtener_corte(
     return corte
 
 
-@router.post("/", response_model=CorteResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=CortePersonal, status_code=status.HTTP_201_CREATED)
 def registrar_corte(
     datos: CorteCrear,
     db: Session = Depends(get_db),
