@@ -1,9 +1,20 @@
 from datetime import datetime
 from decimal import Decimal
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional
 
 from app.models.usuario import Rol
+from app.services.dinero_cortes import validar_porcentaje
+
+
+def _porcentaje_canonico(valor: Optional[Decimal]) -> Optional[Decimal]:
+    """RF-41: 0-100 con hasta dos decimales, sin normalizar silenciosamente."""
+    if valor is None:
+        return None
+    try:
+        return validar_porcentaje(valor)
+    except TypeError as error:
+        raise ValueError(str(error)) from error
 
 
 class UsuarioBase(BaseModel):
@@ -18,6 +29,12 @@ class UsuarioBase(BaseModel):
 class UsuarioCrear(UsuarioBase):
     password: str = Field(..., min_length=6, max_length=100)
 
+    @field_validator("porcentaje_ganancia")
+    @classmethod
+    def _validar_porcentaje(cls, valor: Decimal) -> Decimal:
+        return _porcentaje_canonico(valor)
+
+
 
 class UsuarioActualizar(BaseModel):
     nombre: Optional[str] = Field(None, min_length=1, max_length=100)
@@ -28,6 +45,11 @@ class UsuarioActualizar(BaseModel):
     rol: Optional[Rol] = None
     porcentaje_ganancia: Optional[Decimal] = Field(None, ge=0, le=100)
     activo: Optional[bool] = None
+
+    @field_validator("porcentaje_ganancia")
+    @classmethod
+    def _validar_porcentaje(cls, valor: Optional[Decimal]) -> Optional[Decimal]:
+        return _porcentaje_canonico(valor)
 
 
 class UsuarioResponse(UsuarioBase):

@@ -89,3 +89,100 @@ Revisión de cierre independiente por `sdd-reviewer`: **APROBADO PAQUETE 1**, si
 Completar este paquete aporta funciones puras comprobadas, **no** registro de cortes mejorado, pagos, API, offline, migración ni sincronización. Mantener el contrato global de 57 RF/6 RNF como pendiente de implementación integral. La siguiente división se propone después de medir este paquete y necesita aprobación; no añadir tareas posteriores por iniciativa del implementador.
 
 Cierre T6: paquete monetario en verde, con cobertura parcial RF-3/RF-4/RF-41/RNF-1 y verificación RNF-6; no se declara implementada la spec completa. Se solicita al coordinador la validación independiente con reviewer y la decisión del usuario sobre el siguiente paso. Ejecución detenida, sin redactar ni implementar paquetes adicionales.
+
+---
+
+## Paquete 2 — Fundaciones de registro (dinero conectado + UoW única)
+
+Estado: **tareas redactadas, pendientes de aprobación para implementar**. Paquete 1 (T1–T6) cerrado, no rehacer.
+
+Aprobación recibida: revisión de simplificación aprobada por el usuario y alcance del paquete 2 aprobado para redactar tareas. No se autoriza implementación por esta redacción.
+
+### Alcance y límites
+
+- Siete tareas de 20–30 minutos: estimación 3–4 horas. Si una tarea excede, reducir/reproponer antes de continuar.
+- Cobertura **parcial**: RF-3/RF-4/RF-5 (registro con dinero exacto y snapshot aplicado), RF-41 (validación de entrada de precio/porcentaje), RF-32 (una sola escritura por operación), RNF-1 (redondeo real) y RNF-3 (compatibilidad legacy + esqueleto Alembic). No afirma movimientos, saldos, edición/anulación, sync/offline ni cumplimiento integral.
+- Archivos que podrá tocar este paquete cuando se autorice implementar:
+  - M `backend/app/services/corte_service.py`.
+  - M `backend/app/routers/cortes.py` (solo commit de la UoW en registro).
+  - M `backend/app/routers/sync.py` (solo commit de la UoW en `crear_corte`; hoy persiste gracias al commit interno del servicio).
+  - M `backend/app/schemas/usuario.py` (solo validador de porcentaje).
+  - C `backend/alembic.ini`, C `backend/alembic/env.py`, C `backend/alembic/script.py.mako`, C `backend/alembic/versions/001_base_legacy.py` (base solo-inspección, sin secretos ni URL real).
+  - M `backend/tests/test_cortes.py` (solo assertions a Decimal exacto, sin cambiar fixtures).
+- Prohibido en este paquete: modificar `dinero_cortes.py` y su test (cerrados, solo reutilizar); tocar el DTO personal `CorteResponse` (gate `parte_barberia`/privacidad de plan §11.2, detenido hasta aclaración); tocar `create_all`/`main.py`/`database.py` (gate 9, suite actual dependiente); frontend, movimientos, cierres, outbox, cifrado, barrera global y escritura dual.
+- Colisión de nombres conocida: `corte_service.calcular_partes` (redondeo del contexto, ambas partes quantizadas) vs `dinero_cortes.calcular_partes` (contrato del paquete 1). T7 la resuelve importando el puro y eliminando el duplicado.
+- Precaución DB real: `app/main.py:22` ejecuta `create_all` sobre `backend/barberia.db` al importar, y los tests por archivo importan la app. Antes de cada ejecución registrar hash/tamaño de `backend/barberia.db`; al terminar verificar que no cambió su contenido (solo `create_all` idempotente sobre tablas existentes) y que `git status` no muestra más que los archivos autorizados (`*.db` está ignorado). Prohibido `pytest tests/` global y prohibido cualquier `upgrade` Alembic contra base real.
+
+Comandos desde `backend` en bash:
+
+```bash
+# Regresión del paquete 1 (aislado, sin app ni DB)
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTEST_ADDOPTS='' PYTEST_PLUGINS='' python -m pytest --confcutdir=tests --noconftest -p no:cacheprovider -o addopts= tests/test_dinero_cortes_aislado.py -q
+# Tests por archivo del paquete 2 (importan la app; ver precaución DB real arriba)
+python -m pytest tests/test_cortes.py -q
+python -m pytest tests/test_sync_roles.py tests/test_roles_permisos.py -q
+```
+
+### Tareas en orden de dependencia
+
+- [x] **T7. Conectar el reparto puro al registro y eliminar el duplicado.** RF-3/RF-4 (parciales), RNF-1.
+  - Dependencias: ninguna dentro del paquete; reutiliza `dinero_cortes` cerrado sin modificarlo.
+  - Tests primero: POST `/cortes/` con servicio 100.00 y barbero 50% responde `"50.00"`/`"50.00"` exactos; caso servicio 0.05 al 50% → `0.03`/`0.02` (ROUND_HALF_UP y resto exacto, no HALF_EVEN ni doble quantize).
+  - Implementar: `crear_corte` usa `dinero_cortes.calcular_partes`; eliminar el `calcular_partes` local de `corte_service.py`.
+  - Hecho cuando: tests nuevos en verde, suite aislada del paquete 1 sigue en 167 verdes y el registro real usa el contrato puro.
+
+- [x] **T8. Validar precio canónico y porcentaje a la entrada del registro.** RF-41 (parcial).
+  - Dependencias: T7.
+  - Tests primero: servicio con precio/porcentaje de precisión excesiva se rechaza con `ValueError` en español (el router lo vuelve 400); un float infiltrado también se rechaza como `ValueError`, nunca `TypeError` (500). Hallazgo: a nivel API con filas persistidas no se puede provocar, porque el ORM redondea a escala 2 al leer `Numeric` (verificado: raw 10.005 → ORM `Decimal('10.01')`); por eso la prueba es a nivel servicio con objetos transient. El rechazo en la carga del catálogo (`schemas/servicio.py`) excede los archivos autorizados y queda como decisión pendiente del usuario.
+  - Implementar: `crear_corte` envuelve `(TypeError, ValueError)` de `calcular_partes` en `ValueError` con el mismo mensaje (el router ya mapea a 400); el guard de precisión lo aporta T7.
+  - Hecho cuando: entradas inválidas rechazadas con mensaje exacto y las válidas conservan identidad/escala.
+
+- [x] **T8-bis. Validar precio en la carga del catálogo (extensión aprobada).** RF-41.
+  - El usuario delegó la decisión pendiente de T8: se incluye la extensión mínima (un archivo: `schemas/servicio.py`).
+  - Tests primero: `ServicioCrear`/`ServicioActualizar` con `"10.005"` pasaban (rojo `DID NOT RAISE`); válidos `"100.00"`/`"0.05"` conservan representación.
+  - Implementar: `field_validator("precio")` en Crear/Actualizar (no en Base/Response): finito y ≤2 decimales, mensajes en español; la positividad sigue en `Field(gt=0)`; el router devuelve 422 automáticamente.
+  - Hecho cuando: precisión excesiva rechazada en la entrada del catálogo y el resto de suites sigue verde.
+
+- [x] **T9. Unidad de trabajo única: quitar el commit interno.** RF-32 (una escritura por operación), RNF-3.
+  - Dependencias: T7 (mismo archivo).
+  - Tests primero: POST `/cortes/` persiste el corte; `sync` con `crear_corte` persiste (hoy depende del commit interno del servicio).
+  - Implementar: retirar `db.commit()` de `corte_service.py` (conservar `flush`/`refresh` necesarios); commitean `routers/cortes.py` y `routers/sync.py`. Verificar con grep que `services/corte_service.py` no contiene `commit`.
+  - Hecho cuando: ambos caminos persisten con un solo commit por operación y `test_cortes.py` + `test_sync_roles.py` pasan.
+
+- [x] **T10. Validador de porcentaje en el schema de usuario.** RF-41 (parcial).
+  - Dependencias: ninguna (archivo distinto); reutiliza `validar_porcentaje` sin duplicar reglas.
+  - Tests primero: crear/actualizar usuario con 100.001 o `50.000` → 422; 50.25 y 100 pasan sin normalización.
+  - Hecho cuando: el schema rechaza precisión/rango inválidos con mensaje en español y los válidos conservan representación.
+
+- [x] **T11. Snapshot aplicado del registro (RF-5 parcial).** RF-5 (parcial).
+  - Dependencias: T7–T8.
+  - Tests primero: el corte creado conserva `precio`, `porcentaje_barbero`, `parte_barbero`, `parte_barberia` iguales a los valores validados/aplicados; cambiar después el porcentaje del barbero no altera el corte existente.
+  - Hecho cuando: tests verdes sin agregar columnas nuevas (las columnas ya existen) y sin exponer nada nuevo en el DTO personal.
+
+- [x] **T12. Esqueleto Alembic y base solo-inspección.** RNF-3.
+  - Dependencias: ninguna (archivos nuevos).
+  - Crear `alembic.ini` (sin URL real ni secretos), `env.py` (no importa `app.main`, no abre DB), `script.py.mako` y `versions/001_base_legacy.py` que solo inspecciona el schema existente y se detiene ante diferencias, sin crear ni modificar nada.
+  - Hecho cuando: `alembic history` muestra la base sin errores ni conexión a base real; prohibido ejecutar `upgrade` contra cualquier base real en este paquete.
+
+- [x] **T13. Regresión exacta y cierre del paquete.** RF-3/RF-4/RF-5/RF-41 (parciales), RNF-1/RNF-3/RNF-6.
+  - Dependencias: T7–T12.
+  - Convertir las assertions con `float()` de `test_cortes.py` a comparación Decimal exacta (`"50.00"`); ejecutar por archivo `test_cortes.py`, `test_sync_roles.py`, `test_roles_permisos.py` y la suite aislada del paquete 1, todo en verde, con precaución DB real registrada.
+  - Registrar comandos/resultados en la evidencia de abajo y actualizar el estado sin declarar implementada la spec completa. El cierre requiere revisión independiente (`sdd-reviewer`) y no autoriza paquete 3, API nueva, sync ni frontend.
+  - Hecho cuando: todo lo anterior en verde, solo los archivos autorizados cambiaron y queda solicitada la revisión de cierre.
+
+### Cierre del paquete 2 (revisión independiente)
+
+`sdd-reviewer`: **APROBADO PAQUETE 2**, sin correcciones bloqueantes. Verificó `tasks.md`, diff `dev...HEAD` y los 12 archivos; reejecutó la suite aislada (`167 passed`). Confirmó "Hecho cuando" T7–T13+T8-bis, cobertura declarada parcial sin overclaim, gates §11 intactos (DTO personal, `create_all`, sin upgrade real, sin sync/frontend/movimientos, `dinero_cortes` intacto) y constitución. Observaciones P2 no bloqueantes para paquetes futuros: falta `db.rollback()` en rutas de error; fallback silencioso preexistente de `metodo_pago` a `EFECTIVO` en `sync.py:119-122`; stub `_DbNula` no reutilizable en caminos exitosos; coerción float→Decimal de Pydantic 2.5.2 no verificada (cubierta por guard T8). El cierre no autoriza paquete 3 ni declara la spec implementada.
+
+### Evidencia futura (paquete 2)
+
+| Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
+|---|---|---|---|
+| T7 | Rojo real: `1 failed, 2 passed`; `AssertionError: assert '0.02' == '0.03'` en `test_crear_corte_redondeo_matematico_mitad_hacia_arriba` (quantize del contexto HALF_EVEN antes del fix) | Verde: `3 passed` en `tests/test_cortes.py` + `167 passed` suite aislada paquete 1 | Desde `backend`: `python -m pytest tests/test_cortes.py -q` y comando aislado del paquete 1. `barberia.db` hash idéntico antes/después (`3fe8caa6…f924a9`); `git status` solo `corte_service.py` + `test_cortes.py`. Cambio: `crear_corte` importa `dinero_cortes.calcular_partes`, eliminado duplicado local e import Decimal sin uso. |
+| T8 | Rojo parcial real: 2 API-tests iniciales devolvían 201 (supuesto falso: el ORM oculta el exceso al leer); reescritos a nivel servicio. Tras reescribir: 5 passed + 1 failed con `TypeError: El precio del servicio debe ser Decimal` (habría sido 500) | Verde: `6 passed` en `tests/test_cortes.py` + `167 passed` aislada | Desde `backend`: `python -m pytest tests/test_cortes.py -q`. Sonda SQLite en TEMP (sin tocar repo): raw conserva 10.005/50.001, ORM devuelve `Decimal('10.01')`/`Decimal('50.00')`. `barberia.db` hash idéntico (`3fe8caa6…f924a9`); solo `corte_service.py` + `test_cortes.py`. Cambio: wrap `(TypeError, ValueError)` → `ValueError` mismo mensaje. Pendiente decisión usuario: validación en carga de catálogo (`schemas/servicio.py`, fuera de autorizados). |
+| T9 | Rojo real: la otra conexión SÍ veía el corte (`assert <Corte object> is None` falló) porque el servicio commiteaba | Verde: `10 passed` (`test_cortes.py` + `test_sync_roles.py`) + `167 passed` aislada | Desde `backend`: `python -m pytest tests/test_cortes.py tests/test_sync_roles.py -q`. `barberia.db` hash idéntico (`3fe8caa6…f924a9`); grep confirma cero `db.commit` en `corte_service.py`. Cambio: servicio con `flush`+`refresh` sin commit; commitean `routers/cortes.py` (+refresh) y `routers/sync.py` por operación. Solo archivos autorizados. |
+| T10 | Rojo real: `Failed: DID NOT RAISE ValidationError` para `'50.000'`/50.001 (rango válido, precisión excesiva aceptada) | Verde: `39 passed` (`test_cortes.py` + `test_sync_roles.py` + `test_roles_permisos.py` + `test_usuarios_auditoria.py`) + `167 passed` aislada | Desde `backend`: pytest por archivo. `barberia.db` hash idéntico (`3fe8caa6…f924a9`); solo `schemas/usuario.py` + `test_cortes.py`. Cambio: `field_validator` en `UsuarioCrear`/`UsuarioActualizar` reutilizando `validar_porcentaje` (TypeError→ValueError); `UsuarioResponse` intacto. Tests a nivel schema (sin DB). |
+| T11 | Verde inicial real: `10 passed` incluyendo el test nuevo (código T7–T8 ya conservaba el snapshot; sin rojo artificial ni cambio de implementación) | Mismo verde, única ejecución | Desde `backend`: `python -m pytest tests/test_cortes.py -q`. Test: corte 100.00/50% conserva `100.00`/`50.00`/`50.00` tras subir el porcentaje a 60. Sin columnas nuevas ni cambios al DTO personal. `barberia.db` sin cambios de contenido; solo `test_cortes.py` + este documento. |
+| T12 | Rojo real: `No config file 'alembic.ini' found` y `alembic: command not found` (se usa `python -m alembic`; 1.13.0 instalado) | Verde: `history` muestra `001_base_legacy`; `upgrade head` en TEMP vacía no crea tablas de app (solo `alembic_version`); en TEMP con legacy informa `schema legacy completo (9 tablas)` | `alembic.ini` con placeholder inerte + override `ALEMBIC_SQLALCHEMY_URL`; `env.py` no importa `app.main`. `barberia.db` hash idéntico (`3fe8caa6…f924a9`); prohibido `upgrade` contra base real. Solo 4 archivos nuevos. |
+| T8-bis | Rojo real: `DID NOT RAISE ValidationError` para `"10.005"` en Crear/Actualizar | Verde: suite completa por archivo (`42 + 2 + 8 + 10 + 2`) + `167 passed` aislada | `field_validator("precio")` solo en entrada; `barberia.db` hash idéntico; `git status` solo `schemas/servicio.py` + `test_cortes.py` + este documento. |
+| T13 | Sin rojo: conversión directa de 2 assertions `float()` a strings exactos en el test legacy | Verde: `36 passed` (`test_cortes.py` + `test_sync_roles.py` + `test_roles_permisos.py`) + `4 passed` extra (`test_usuarios_auditoria.py`) + `167 passed` aislada | Desde `backend`: pytest por archivo (comandos del paquete). `barberia.db` hash idéntico (`3fe8caa6…f924a9`); `git status` solo `test_cortes.py` + este documento. Paquete 2 completo en cobertura parcial, sin declarar spec implementada; cierre pendiente de revisión independiente (`sdd-reviewer`), que no autoriza paquete 3. |
