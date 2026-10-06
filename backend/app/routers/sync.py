@@ -121,6 +121,7 @@ def sincronizar_operaciones(
                 except (ValueError, KeyError):
                     metodo = MetodoPago.EFECTIVO
                 crear_corte(db, usuario, int(op.datos["servicio_id"]), metodo)
+                db.commit()
             else:
                 # Otras acciones administrativas: aceptadas como válidas para el rol;
                 # su aplicación detallada se realiza por los endpoints correspondientes.

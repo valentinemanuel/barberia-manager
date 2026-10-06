@@ -34,6 +34,8 @@ def crear_corte(
         metodo_pago=metodo_pago,
     )
     db.add(corte)
-    db.commit()
+    # Sin commit: la unidad de trabajo la posee el llamador (router online o
+    # sync), con un solo commit por operacion. Flush asigna el ID.
+    db.flush()
     db.refresh(corte)
     return corte

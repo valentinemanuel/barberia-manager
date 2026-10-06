@@ -8,6 +8,7 @@ from app.main import app
 from app.database import Base, get_db
 from app.models.usuario import Usuario, Rol
 from app.models.servicio import Servicio
+from app.models.corte import Corte
 from passlib.context import CryptContext
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -259,3 +260,26 @@ class _DbNula:
 
     def refresh(self, _obj):
         pass
+
+
+def test_crear_corte_no_commitea_persiste_solo_con_commit_externo(client):
+    """T9: el servicio hace flush sin commit; otra conexion no ve el corte
+    hasta que el llamador commitea (UoW unica por operacion)."""
+    from app.services.corte_service import crear_corte
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t9", Decimal("50"), Decimal("100.00"))
+    barbero = db.query(Usuario).filter(Usuario.usuario == "barbero_t9").first()
+    servicio_id = db.query(Servicio).first().id
+
+    corte = crear_corte(db, barbero, servicio_id, "efectivo")
+
+    otra_conexion = TestingSessionLocal()
+    assert otra_conexion.query(Corte).filter(Corte.id == corte.id).first() is None
+    otra_conexion.close()
+
+    db.commit()
+    verificacion = TestingSessionLocal()
+    assert verificacion.query(Corte).filter(Corte.id == corte.id).first() is not None
+    verificacion.close()
+    db.close()
