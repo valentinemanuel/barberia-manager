@@ -29,7 +29,9 @@ Este documento define los principios no negociables del proyecto. Toda spec, pla
 - Backend: snake_case variables/funciones, PascalCase clases, type hints siempre.
 - Frontend: camelCase variables/funciones, PascalCase componentes.
 - Commits en inglés con prefijos: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, `test:`.
-- Ramas desde `main`: `feat/nombre`, `fix/nombre`, `docs/nombre`, etc. PR con descripción y tests. No push directo a `main`.
+- Toda rama de trabajo parte de `dev` actualizado: `feat/nombre`, `fix/nombre`, `docs/nombre`, `style/nombre`, `refactor/nombre`, `chore/nombre`, `test/nombre`.
+- Los cambios se integran mediante PR de la rama de trabajo hacia `dev`, con descripción clara y evidencia de validación. No hacer push directo a `dev` ni a `main`.
+- Las releases se realizan mediante PR de `dev` hacia `main`. El propietario del proyecto es quien decide y ejecuta esa integración; el agente no realiza merges hacia `main`.
 
 ## 6. Herramientas
 - MCP activos: context7 (docs), playwright (E2E), sqlite, github.
