@@ -313,7 +313,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-1/RF-2/RF-8/RF-10 onli
   - Tests: historial/detalle/registro con destino y momento responden sin `parte_barberia` (reutilizar detector T17); listado global admin intacto con contrato completo.
   - Hecho cuando: verdes sin cambios productivos nuevos salvo ajustes exigidos por un rojo real.
 
-- [ ] **T25. Regresión total y cierre del paquete.** RF-1/RF-2/RF-8/RF-10/RF-56 (parciales), RNF-3/RNF-6.
+- [x] **T25. Regresión total y cierre del paquete.** RF-1/RF-2/RF-8/RF-10/RF-56 (parciales), RNF-3/RNF-6.
   - Dependencias: T20–T24.
   - Ejecutar por archivo las suites tocadas + suite aislada del paquete 1, todo en verde, con precaución DB real registrada.
   - Registrar comandos/resultados en la evidencia de abajo y actualizar el estado sin declarar implementada la spec completa. El cierre requiere revisión independiente (`sdd-reviewer`) y no autoriza paquete 5.
@@ -328,7 +328,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-1/RF-2/RF-8/RF-10 onli
 | T22 | Verde inicial real (cubierto por implementación T20; sin rojo artificial ni cambio productivo) | Mismo verde | Test: admin retroactivo 2021 para barbero 30% sobre 200.00 → `60.00` + fecha conservada (no el 0% del admin). Solo `test_cortes.py` + este documento. |
 | T23 | Verde inicial real (cubierto por T20–T21; sin rojo artificial ni cambio productivo) | Mismo verde | Test: 404 `Barbero no encontrado`, 403 con `admin`, 400 con `futuro`, 422 en tipos inválidos; sin datos ajenos. Solo `test_cortes.py` + este documento. |
 | T24 | Verde inicial real (detector T17 + listado admin intactos; sin rojo artificial ni cambio productivo) | Mismo verde | Test nuevo: listado global admin conserva `parte_barberia`. Solo `test_cortes.py` + este documento. |
-| T25 |  |  |  |
+| T25 | Sin rojo: solo verificación final, sin cambios productivos nuevos | Verde: `60 + 2 + 8 + 10 + 2` por archivo (toda la suite backend) + `167 passed` aislada | `barberia.db` hash idéntico (`3fe8caa6…f924a9`); `git status` solo este documento. Paquete 4 completo en cobertura parcial, sin declarar spec implementada; cierre pendiente de revisión independiente (`sdd-reviewer`), que no autoriza paquete 5. |
 
 ### Cierre del paquete 3 (revisión independiente)
 
