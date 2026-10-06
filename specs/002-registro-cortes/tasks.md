@@ -170,6 +170,10 @@ python -m pytest tests/test_sync_roles.py tests/test_roles_permisos.py -q
   - Registrar comandos/resultados en la evidencia de abajo y actualizar el estado sin declarar implementada la spec completa. El cierre requiere revisión independiente (`sdd-reviewer`) y no autoriza paquete 3, API nueva, sync ni frontend.
   - Hecho cuando: todo lo anterior en verde, solo los archivos autorizados cambiaron y queda solicitada la revisión de cierre.
 
+### Cierre del paquete 2 (revisión independiente)
+
+`sdd-reviewer`: **APROBADO PAQUETE 2**, sin correcciones bloqueantes. Verificó `tasks.md`, diff `dev...HEAD` y los 12 archivos; reejecutó la suite aislada (`167 passed`). Confirmó "Hecho cuando" T7–T13+T8-bis, cobertura declarada parcial sin overclaim, gates §11 intactos (DTO personal, `create_all`, sin upgrade real, sin sync/frontend/movimientos, `dinero_cortes` intacto) y constitución. Observaciones P2 no bloqueantes para paquetes futuros: falta `db.rollback()` en rutas de error; fallback silencioso preexistente de `metodo_pago` a `EFECTIVO` en `sync.py:119-122`; stub `_DbNula` no reutilizable en caminos exitosos; coerción float→Decimal de Pydantic 2.5.2 no verificada (cubierta por guard T8). El cierre no autoriza paquete 3 ni declara la spec implementada.
+
 ### Evidencia futura (paquete 2)
 
 | Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
