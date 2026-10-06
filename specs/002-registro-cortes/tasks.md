@@ -259,6 +259,10 @@ Decisión del gate registrada: se crea el DTO personal `CortePersonal` (= `Corte
 | T18 | Rojo: grep hallaba `parte_barberia` en `db.ts` y `RegistroCortes.tsx` (código de barbero) | Verde: `npm run build` (tsc + vite) OK; grep limpio en código de barbero | Retirados cálculo offline y campo `CorteLocal`; tipo de admin intacto; filas Dexie viejas con el campo se ignoran sin migrar (propiedad extra tolerada). Solo `db.ts` + `RegistroCortes.tsx` + este documento. |
 | T19 | Sin rojo: solo verificación final, sin cambios productivos nuevos | Verde: `49 + 2 + 8 + 10 + 2` por archivo (toda la suite backend) + `167 passed` aislada + `npm run build` OK | `barberia.db` hash idéntico (`3fe8caa6…f924a9`); `git status` solo este documento. Paquete 3 completo en cobertura parcial, sin declarar spec implementada; cierre pendiente de revisión independiente (`sdd-reviewer`), que no autoriza paquete 4. |
 
+### Cierre del paquete 3 (revisión independiente)
+
+`sdd-reviewer`: **APROBADO PAQUETE 3**, sin correcciones (ningún P1; no tocó archivos). Verificó "Hecho cuando" T14–T19, cobertura parcial sin overclaim, gate §11.2 cerrado respetando la decisión registrada (detalle compartido a DTO personal; admin conserva listado + reportes; sin versionado por no haber consumidores externos), constitución (Decimal, % solo servicios, privacidad, compat admin) y legitimidad de la migración de assertions viejas (resto exacto en fila DB + suite aislada). Reejecutó: `test_cortes.py` 19 passed, resto 30 passed, aislada 167 passed, `npm run build` OK, hash DB idéntico. P2 informativos para futuro: T17 no asserts explícitos de totales globales; `Math.round` float preexistente en estimada offline (`RegistroCortes.tsx:81`, corresponde a paquete frontend); P2 del paquete 2 vigentes. El cierre no autoriza paquete 4 ni declara la spec implementada.
+
 ---
 
 ## Paquete 4 — Registro online: destino y momento real
@@ -334,6 +338,92 @@ Aprobación recibida: alcance aprobado por el usuario (RF-1/RF-2/RF-8/RF-10 onli
 
 `sdd-reviewer`: **APROBADO PAQUETE 4**, sin P1 ni archivos tocados. Verificó "Hecho cuando" T20–T25, cobertura parcial sin overclaim, constitución (Decimal, % solo servicios, privacidad, compat: sync y DTOs intactos) y legitimidad de verdes iniciales. Reejecutó: 30 + 30 + 22 + 167 verdes, hash DB idéntico. P2 para futuro: (1) no se valida `destino.rol` — un admin podría atribuir un corte a otro admin; RF-2 dice "cualquier barbero", requiere decisión de spec, no corrección unilateral; (2) sin `rollback()` en rutas de error (heredado); (3) imprecisión menor de redacción en evidencia T23. El cierre no autoriza paquete 5 ni declara la spec implementada.
 
-### Cierre del paquete 3 (revisión independiente)
+---
 
-`sdd-reviewer`: **APROBADO PAQUETE 3**, sin correcciones (ningún P1; no tocó archivos). Verificó "Hecho cuando" T14–T19, cobertura parcial sin overclaim, gate §11.2 cerrado respetando la decisión registrada (detalle compartido a DTO personal; admin conserva listado + reportes; sin versionado por no haber consumidores externos), constitución (Decimal, % solo servicios, privacidad, compat admin) y legitimidad de la migración de assertions viejas (resto exacto en fila DB + suite aislada). Reejecutó: `test_cortes.py` 19 passed, resto 30 passed, aislada 167 passed, `npm run build` OK, hash DB idéntico. P2 informativos para futuro: T17 no asserts explícitos de totales globales; `Math.round` float preexistente en estimada offline (`RegistroCortes.tsx:81`, corresponde a paquete frontend); P2 del paquete 2 vigentes. El cierre no autoriza paquete 4 ni declara la spec implementada.
+## Paquete 5 — Idempotencia y reintentos seguros
+
+Estado: **tareas redactadas, pendientes de aprobación para implementar**. Paquetes 1–4 cerrados, no rehacer.
+
+Aprobación recibida: alcance aprobado por el usuario (RF-32 + base RF-30). No se autoriza implementación por esta redacción.
+
+### Alcance y límites
+
+- Ocho tareas de 20–30 minutos: estimación 3–4 horas.
+- Cobertura **parcial**: RF-32 (sin duplicados ante reintento), RF-30 (resultado individual por operación), RF-57 (resultado conservado por operación, parcial). No afirma offline/outbox frontend, revisión/dependientes, movimientos, jornadas ni cumplimiento integral.
+- Decisiones registradas:
+  - Clave idempotente = `(actor_id, namespace_cliente, operacion_id)`; `operacion_id` es UUID cliente obligatoria solo cuando se usa el camino idempotente.
+  - `operacion_uuid` opcional en `CorteCrear`; sin UUID → camino legacy intacto (RNF-3). Namespace por defecto `"web"` en POST directo; sync aportará el suyo (paquete de sync).
+  - Misma clave + mismo hash → acuse guardado sin reejecutar. Misma clave + hash distinto → 409 conflicto de identidad, sin efecto.
+  - Solo estado terminal en este paquete (`aceptada`/`rechazada`); revisión/dependientes corresponden a paquetes posteriores.
+- Archivos que podrá tocar este paquete cuando se autorice implementar:
+  - C `backend/app/models/operacion_corte.py` (solo tabla mínima de journal idempotente).
+  - M `backend/app/models/__init__.py` (solo registro del modelo).
+  - C `backend/app/services/operacion_corte_service.py` (solo ejecutor get-or-create + hash).
+  - M `backend/app/services/corte_service.py` (solo delegar en el ejecutor cuando hay UUID; camino sin UUID intacto).
+  - M `backend/app/routers/cortes.py` (solo pasar UUID/namespace al servicio).
+  - M `backend/app/routers/sync.py` (solo aceptar `operacion_uuid` opcional en datos de `crear_corte`; sin él, comportamiento legacy documentado sin promesa de deduplicación retroactiva).
+  - C `backend/alembic/versions/002_operaciones_corte.py` (solo crea la tabla nueva; idempotente; sin tocar legacy).
+  - M `backend/tests/test_cortes.py` (solo tests nuevos).
+- Prohibido: modificar tablas/columnas legacy, DTOs de respuesta, otros routers/servicios, frontend, `create_all`, estados no terminales.
+- **Gate de migración real**: el archivo de migración es código (seguro commitear); APLICAR `upgrade` contra `barberia.db` u otra base real exige aprobación explícita + backup verificado/restaurable + validación previa en copia temporal (plan §4). Durante el paquete, `upgrade` solo contra DBs temporales (`ALEMBIC_SQLALCHEMY_URL`); los tests usan sus DBs locales como siempre. Hash de `barberia.db` antes/después de cada ejecución.
+
+### Tareas en orden de dependencia
+
+- [ ] **T26. Tabla mínima de journal idempotente + migración 002.** RF-32 (base), RNF-3.
+  - Dependencias: ninguna dentro del paquete.
+  - Tests primero: `alembic history` muestra `002` tras `001`; `upgrade head` en TEMP vacía crea solo `operaciones_corte` (+ `alembic_version`); en TEMP con legacy no toca tablas existentes; repetir `upgrade` es no-op.
+  - Implementar: modelo `OperacionCorte` (actor_id, namespace_cliente, operacion_id UUID, accion, hash, modo_captura, estado, resultado JSON, recibida_en UTC; única la tupla clave) + revisión `002_operaciones_corte.py` solo-creación.
+  - Hecho cuando: ambos escenarios TEMP verificados y prohibido aplicar contra base real en este paquete.
+
+- [ ] **T27. Ejecutor idempotente (get-or-create + hash).** RF-32 (parcial).
+  - Dependencias: T26.
+  - Tests primero: primera ejecución con clave+hash crea y devuelve resultado; segunda con misma clave + mismo hash devuelve el acuse guardado sin reejecutar (el efecto ocurre una sola vez: un solo corte en DB).
+  - Implementar: `operacion_corte_service.ejecutar` (lookup por clave; si existe y hash coincide → acuse; si no → ejecuta callback en la misma UoW, guarda resultado, un commit).
+  - Hecho cuando: doble llamada con distintos hilos/sesiones deja un solo efecto y el mismo acuse; tests con DBs locales.
+
+- [ ] **T28. Camino idempotente en POST /cortes.** RF-30/RF-32 (parciales), RNF-3.
+  - Dependencias: T27.
+  - Tests primero: POST con `operacion_uuid` dos veces → 201 ambas con el mismo `id` de corte y un solo corte en DB; POST sin UUID → comportamiento legacy intacto (regression de paquetes 2–4).
+  - Implementar: `operacion_uuid: Optional[UUID]` en `CorteCrear`; el router usa el ejecutor solo si viene UUID (namespace `"web"`).
+  - Hecho cuando: tests API en verde y el camino sin UUID no cambia ni un byte de comportamiento.
+
+- [ ] **T29. Conflicto de identidad.** RF-32 (parcial).
+  - Dependencias: T27.
+  - Tests primero: misma clave + hash distinto (mismo UUID, distinto servicio/monto) → 409, sin crear corte ni mutar el resultado guardado; el acuse original sigue devolviéndose en replays del hash original.
+  - Implementar: comparación de hash canónico en el ejecutor; 409 con mensaje en español.
+  - Hecho cuando: tests en verde y ningún efecto secundario del intento conflictivo.
+
+- [ ] **T30. Replay terminal sin recalcular.** RF-32/RF-57 (parciales).
+  - Dependencias: T27–T28.
+  - Tests primero: replay con catálogo cambiado entremedio (precio/porcentaje distintos) devuelve el acuse original con el snapshot aplicado original, sin recalcular ni crear otro corte.
+  - Hecho cuando: el replay no toca `corte_service` (verificable por snapshot idéntico) y pasa el test.
+
+- [ ] **T31. Doble envío simultáneo.** RF-32 (parcial), RNF-6.
+  - Dependencias: T27–T28.
+  - Tests primero: dos hilos con misma UUID contra TestClient → un solo corte en DB y ambos acuses con el mismo `id` (reintentar hasta 3 veces si hay contención SQLite; si la contención es sistemática, documentar y usar secuencial + constraint única como red).
+  - Hecho cuando: unicidad garantizada por constraint + manejo, no por suerte de timing.
+
+- [ ] **T32. UUID opcional en el camino sync.** RF-30/RF-32 (parciales), RNF-3.
+  - Dependencias: T27.
+  - Tests primero: op `crear_corte` con `operacion_uuid` en datos → reenvío del lote no duplica; sin UUID → comportamiento legacy intacto (documentar la limitación de deduplicación retroactiva del plan §4, sin prometerla).
+  - Implementar: leer `operacion_uuid` opcional de `op.datos` y pasarlo al ejecutor con namespace `"sync"`.
+  - Hecho cuando: tests del envelope en verde y el resto del protocolo sync intacto.
+
+- [ ] **T33. Regresión total y cierre del paquete.** RF-30/RF-32/RF-57 (parciales), RNF-3/RNF-6.
+  - Dependencias: T26–T32.
+  - Ejecutar por archivo las suites tocadas + suite aislada del paquete 1, todo en verde, con precaución DB real + gate de migración registrados (ningún `upgrade` contra base real ejecutado).
+  - Registrar comandos/resultados en la evidencia de abajo y actualizar el estado sin declarar implementada la spec completa. El cierre requiere revisión independiente (`sdd-reviewer`) y no autoriza paquete 6.
+  - Hecho cuando: todo lo anterior en verde, solo los archivos autorizados cambiaron y queda solicitada la revisión de cierre.
+
+### Evidencia futura (paquete 5)
+
+| Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
+|---|---|---|---|
+| T26 |  |  |  |
+| T27 |  |  |  |
+| T28 |  |  |  |
+| T29 |  |  |  |
+| T30 |  |  |  |
+| T31 |  |  |  |
+| T32 |  |  |  |
+| T33 |  |  |  |

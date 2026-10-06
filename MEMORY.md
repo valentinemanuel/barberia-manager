@@ -125,6 +125,9 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 - Revisión de cierre ejecutada: **APROBADO PAQUETE 4** sin correcciones (P2-1 destacado: destino sin validar rol —admin podría atribuir a otro admin— requiere tu decisión de spec). No autoriza paquete 5 ni declara la spec implementada.
 - Decisión P2-1 tomada por el usuario: restringir destino a barberos (propio explícito permitido). Implementada en rama `fix/destino-solo-barberos` (rojo→verde, 58 passed, DB intacta).
 
+## Spec 002 — paquete 5 redactado (2026-10-06)
+- `tasks.md` con T26–T33 (~3–4h) en rama `feat/spec-002-paquete-5-idempotencia`: journal idempotente mínimo, ejecutor get-or-create + hash, camino POST con UUID opcional, conflicto 409, replay sin recalcular, doble envío simultáneo, UUID en sync y regresión. Decisiones: UUID opcional (legacy intacto), namespace web/sync, solo estados terminales. Gate: ningún `upgrade` contra base real sin aprobación + backup verificado. Implementación pendiente de aprobación.
+
 ## Recuperación documental (2026-10-05)
 - Recuperado el contenido útil de `b211ee5` en una rama nueva desde `dev`, sin cherry-pick ni reescritura de la rama histórica `feat/mcp-config-y-offline`.
 - Conservados el estado y los pendientes actuales; no se recupera la afirmación antigua de que todos los tests están completos.
