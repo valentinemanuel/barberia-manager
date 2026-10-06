@@ -1357,6 +1357,29 @@ def test_corte_bloqueado_desde_primer_abono(client):
     db.close()
 
 
+def test_movimientos_respetan_privacidad(client):
+    """T40: ajeno → 404; respuestas propias sin datos del negocio."""
+    from app.models.usuario import Rol as RolModelo
+
+    corte_id = _corte_para_abonos(client, "barbero_t40")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barbero_t40b", RolModelo.BARBERO)
+    db.close()
+    token_ajeno = _token_para(client, "barbero_t40b")
+
+    assert _abonar(client, token_ajeno, corte_id, "cliente", 10).status_code == 404
+    assert _saldos(client, token_ajeno, corte_id).status_code == 404
+
+    token = _token_para(client, "barbero_t40")
+    assert _abonar(client, token, corte_id, "cliente", 10).status_code == 201
+    assert _sin_campos_prohibidos(_saldos(client, token, corte_id).json()) == []
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t40", RolModelo.ADMIN)
+    db.close()
+    assert _abonar(client, _token_para(client, "admin_t40"), corte_id, "cliente", 10).status_code == 201
+
+
 def test_reintentos_agotados_sin_efecto_residual(client):
     """P2-3 paquete 5: contención persistente → ReintentosAgotados, sin filas."""
     from app.models.operacion_corte import OperacionCorte

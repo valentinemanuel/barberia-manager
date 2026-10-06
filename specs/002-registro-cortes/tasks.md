@@ -500,7 +500,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-16–21, RF-37, bloque
   - Implementar: validación contra saldo en la UoW + helper de bloqueo (sin enforcement de edición aún: no existe edición).
   - Hecho cuando: tests en verde y ningún movimiento inválido persiste.
 
-- [ ] **T40. Compatibilidad y privacidad de movimientos.** RF-14/RF-15 (regresión), RNF-3/RNF-5.
+- [x] **T40. Compatibilidad y privacidad de movimientos.** RF-14/RF-15 (regresión), RNF-3/RNF-5.
   - Dependencias: T35–T39.
   - Tests primero: barbero no opera sobre corte ajeno (404 idéntico); respuestas de movimientos/saldos sin `parte_barberia`/costos/márgenes (reutilizar detector T17); admin gestión conserva acceso.
   - Hecho cuando: verdes sin cambios productivos nuevos salvo ajustes exigidos por un rojo real.
@@ -521,5 +521,5 @@ Aprobación recibida: alcance aprobado por el usuario (RF-16–21, RF-37, bloque
 | T37 | Verde inicial real (cubierto por T36; sin rojo artificial ni cambio productivo) | Mismo verde | Matriz 0/30/30+70 → pendiente/parcial-70/pagado-0. Unknown/excedentes explícitamente fuera. Solo `test_cortes.py` + este documento. |
 | T38 | Rojo real: 2 failed (campos ignorados; parcial/completo sin abono) | Verde: `3 passed` nuevos | DB estable en baseline T35; solo `schemas/corte.py` + `routers/cortes.py` + `test_cortes.py`. Cambio: enum `CobroInicial` + `importe_cobro` opcionales; abono en la misma UoW (completo = precio del snapshot); cobro incluido en el hash idempotente (misma UUID + distinto cobro = 409 futuro); sin elección → pendiente. |
 | T39 | Rojo real: exceso aceptado + `ImportError corte_bloqueado` | Verde: `79 passed` (3 archivos) | DB estable en baseline T35; solo `movimiento_corte_service.py` + `test_cortes.py`. Cambio: validación contra saldo con `origen` (online rechaza, offline documentado para revisión RF-38); helper `corte_bloqueado()` (cierre aún no existe). Cobro inicial/completo hereda la validación (completo = precio = restante). |
-| T40 |  |  |  |
+| T40 | Verde inicial real (cubierto por T35–T36; sin rojo artificial ni cambio productivo) | Mismo verde | Test: ajeno 404 en abono y saldos, detector T17 limpio en respuestas propias, admin gestión conserva acceso. Solo `test_cortes.py` + este documento. |
 | T41 |  |  |  |
