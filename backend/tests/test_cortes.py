@@ -80,9 +80,9 @@ def test_crear_corte_calcula_porcentaje(client):
     )
     assert response.status_code == 201
     data = response.json()
-    # Los Decimal se serializan como string ("50.00")
-    assert float(data["parte_barbero"]) == 50.00
-    assert float(data["parte_barberia"]) == 50.00
+    # T13: comparacion Decimal exacta, sin floats.
+    assert data["parte_barbero"] == "50.00"
+    assert data["parte_barberia"] == "50.00"
 
     db.close()
 
