@@ -601,7 +601,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-22–27, RF-42, RF-46 
   - Tests primero: barbero no edita/anula ajeno (404 idéntico); respuestas sin `parte_barberia`/costos (detector T17); admin gestión conserva acceso; listado global intacto.
   - Hecho cuando: verdes sin cambios productivos nuevos salvo ajustes exigidos por un rojo real.
 
-- [ ] **T49. Regresión total y cierre del paquete.** RF-22–27/RF-42/RF-46 (parciales), RNF-3/RNF-6.
+- [x] **T49. Regresión total y cierre del paquete.** RF-22–27/RF-42/RF-46 (parciales), RNF-3/RNF-6.
   - Dependencias: T42–T48.
   - Ejecutar por archivo las suites tocadas + suite aislada del paquete 1, todo en verde, con precaución DB real + gate de migración registrados (ningún `upgrade` contra base real ejecutado).
   - Registrar comandos/resultados en la evidencia de abajo y actualizar el estado sin declarar implementada la spec completa. El cierre requiere revisión independiente (`sdd-reviewer`) y no autoriza paquete 8.
@@ -618,4 +618,4 @@ Aprobación recibida: alcance aprobado por el usuario (RF-22–27, RF-42, RF-46 
 | T46 | Rojo real: admin editaba bloqueado sin motivo (200 en vez de 400) | Verde: `66 passed` (2 archivos) | DB estable; `schemas/corte.py` (`motivo` en `CorteEditar`) + `routers/cortes.py` + `test_cortes.py`. Cambio: motivo obligatorio admin en bloqueado (edición y anulación); anulación lo persiste (autor/momento/motivo), edición lo exige sin journal (auditoría futura). Migración honesta: test T44 actualizado al contrato nuevo. |
 | T47 | Rojo real: doble (anulado contado en dashboard; abono al anulado 201) | Verde: `91 passed` (3 archivos) | DB estable; `reportes.py` (6 filtros `anulado_en IS NULL`: conteos, top, día, ganancias) + `movimientos_corte.py` (409 al anulado) + `test_cortes.py`. Cambio mínimo sin reinterpretar cierres legacy. Dinero abonado conservado y consultable. |
 | T48 | Verde inicial real (cubierto por T43–T47; sin rojo artificial ni cambio productivo) | Mismo verde | Test: ajeno 404 en PATCH y anular, detector limpio en respuestas propias, admin anula con motivo, listado global intacto con contrato completo. Solo `test_cortes.py` + este documento. |
-| T49 |  |  |  |
+| T49 | Sin rojo: solo verificación final, sin cambios productivos nuevos | Verde: `96 + 2 + 8 + 10 + 2` por archivo (toda la suite backend) + `167 passed` aislada | DB estable en baseline (`4c7f1b19…`); ningún `upgrade` contra base real ejecutado; `git status` solo este documento. Paquete 7 completo en cobertura parcial, sin declarar spec implementada; cierre pendiente de revisión independiente (`sdd-reviewer`), que no autoriza paquete 8. |
