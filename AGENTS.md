@@ -92,3 +92,15 @@ pytest tests/ -v --cov=app
 - **Sincronización**: Bidireccional con manejo de conflictos (last-write-wins con timestamp)
 - **Monedas**: Siempre Decimal, nunca float
 - **Fechas**: UTC en backend, local en frontend
+
+## MCP Servers
+- Plantilla sin credenciales: `opencode.json.example`. Preparación y validación en `docs/mcp.md`.
+- **context7**: documentación actualizada de librerías.
+- **playwright**: pruebas de navegador/E2E de la PWA.
+- **sqlite**: acceso a `backend/barberia.db`; requiere `uvx`. La plantilla conserva el pin histórico `mcp==1.2.0`; verificar la conexión antes de usarlo. No modificar datos reales sin autorización.
+- **github**: usa `GITHUB_PERSONAL_ACCESS_TOKEN` del entorno, nunca un token literal en archivos versionados.
+- No usar `chrome-devtools-mcp`: inestable con Edge; usar Playwright MCP.
+
+## Mantenimiento de Documentos
+- Tras cambios significativos, actualizar `MEMORY.md` con decisiones, estado y pendientes comprobados. Actualizar `AGENTS.md` cuando cambien las convenciones o herramientas.
+- `opencode.json` es configuración local ignorada por Git y nunca se commitea. Si cambia la configuración de MCP, actualizar la plantilla sin copiar credenciales ni datos personales.
