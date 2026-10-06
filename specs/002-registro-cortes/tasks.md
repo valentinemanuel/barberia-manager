@@ -186,3 +186,75 @@ python -m pytest tests/test_sync_roles.py tests/test_roles_permisos.py -q
 | T12 | Rojo real: `No config file 'alembic.ini' found` y `alembic: command not found` (se usa `python -m alembic`; 1.13.0 instalado) | Verde: `history` muestra `001_base_legacy`; `upgrade head` en TEMP vacía no crea tablas de app (solo `alembic_version`); en TEMP con legacy informa `schema legacy completo (9 tablas)` | `alembic.ini` con placeholder inerte + override `ALEMBIC_SQLALCHEMY_URL`; `env.py` no importa `app.main`. `barberia.db` hash idéntico (`3fe8caa6…f924a9`); prohibido `upgrade` contra base real. Solo 4 archivos nuevos. |
 | T8-bis | Rojo real: `DID NOT RAISE ValidationError` para `"10.005"` en Crear/Actualizar | Verde: suite completa por archivo (`42 + 2 + 8 + 10 + 2`) + `167 passed` aislada | `field_validator("precio")` solo en entrada; `barberia.db` hash idéntico; `git status` solo `schemas/servicio.py` + `test_cortes.py` + este documento. |
 | T13 | Sin rojo: conversión directa de 2 assertions `float()` a strings exactos en el test legacy | Verde: `36 passed` (`test_cortes.py` + `test_sync_roles.py` + `test_roles_permisos.py`) + `4 passed` extra (`test_usuarios_auditoria.py`) + `167 passed` aislada | Desde `backend`: pytest por archivo (comandos del paquete). `barberia.db` hash idéntico (`3fe8caa6…f924a9`); `git status` solo `test_cortes.py` + este documento. Paquete 2 completo en cobertura parcial, sin declarar spec implementada; cierre pendiente de revisión independiente (`sdd-reviewer`), que no autoriza paquete 3. |
+
+---
+
+## Paquete 3 — Contratos personales sin parte de la barbería (cierre del gate §11.2)
+
+Estado: **tareas redactadas, pendientes de aprobación para implementar**. Paquetes 1 y 2 cerrados, no rehacer.
+
+Aprobación recibida: el usuario aprueba corregir (no documentar excepción) y redactar estas tareas. No se autoriza implementación por esta redacción.
+
+Decisión del gate registrada: se crea el DTO personal `CortePersonal` (= `CorteResponse` sin `parte_barberia`) y lo usan los 3 endpoints personales. El listado global de admin (`GET /cortes/`) y reportes conservan el contrato completo. El detalle compartido `GET /{id}` pasa al DTO personal para ambos roles: el admin conserva listado global + reportes para ver la parte de la barbería. Sin versionado de API: no existen consumidores externos (único cliente: la PWA propia).
+
+### Alcance y límites
+
+- Seis tareas de 20–30 minutos: estimación 2–3 horas.
+- Cobertura **parcial**: RF-11 (shape del historial propio), RF-14 (404 ajeno, regresión), RF-15 (sin brutos del negocio), RNF-3 (compat admin intacta), RNF-5, RNF-6. No afirma movimientos, saldos, sync/offline, jornadas ni cumplimiento integral.
+- Archivos que podrá tocar este paquete cuando se autorice implementar:
+  - M `backend/app/schemas/corte.py` (solo agregar `CortePersonal`; `CorteResponse` intacto).
+  - M `backend/app/routers/cortes.py` (solo `response_model` de `/mi/historial`, `/{id}` y `POST /`).
+  - M `backend/tests/test_cortes.py` (solo tests nuevos de privacidad).
+  - M `frontend/src/services/db.ts` (solo tipo local `CorteLocal`).
+  - M `frontend/src/pages/RegistroCortes.tsx` (solo retirar el cálculo local de `parte_barberia` offline; `parte_barbero` se conserva).
+- Prohibido: tocar `CorteResponse`, endpoints admin, reportes, modelos, servicios, sync, resto del frontend, migraciones y `create_all`.
+- Precaución DB real vigente (igual que paquete 2): `main.py:22` ejecuta `create_all` al importar; registrar hash de `backend/barberia.db` antes/después, pytest solo por archivo, prohibido `pytest tests/` global.
+- Verificación frontend: `npm run build` en `frontend/` (tsc + vite).
+
+### Tareas en orden de dependencia
+
+- [ ] **T14. Crear el DTO personal sin parte de la barbería.** RF-11/RF-15 (parciales), RNF-3.
+  - Dependencias: ninguna dentro del paquete.
+  - Tests primero: `CortePersonal` acepta un corte completo y su `.model_dump()` no contiene `parte_barberia`; `CorteResponse` sigue intacto con el campo (compat admin).
+  - Implementar: agregar `CortePersonal` en `schemas/corte.py` (mismos campos menos `parte_barberia`); no modificar `CorteResponse`.
+  - Hecho cuando: tests schema-level en verde sin DB y el contrato admin no cambia.
+
+- [ ] **T15. Historial propio con DTO personal.** RF-11/RF-15 (parciales).
+  - Dependencias: T14.
+  - Tests primero: `GET /mi/historial` como barbero no incluye `parte_barberia` en ningún ítem y sí incluye `parte_barbero`, servicio, momento real, método y estados; como admin en `/mi/historial` ve solo lo propio.
+  - Implementar: `response_model=list[CortePersonal]` en `mis_cortes`.
+  - Hecho cuando: tests API en verde y el listado global de admin sigue devolviendo el contrato completo.
+
+- [ ] **T16. Detalle y registro con DTO personal.** RF-11/RF-14/RF-15 (parciales).
+  - Dependencias: T14.
+  - Tests primero: `GET /{id}` propio y `POST /` responden sin `parte_barberia`; `GET /{id}` ajeno como barbero sigue 404 (regresión RF-14); el admin conserva listado global + reportes para la parte de la barbería (decisión registrada arriba).
+  - Implementar: `response_model=CortePersonal` en `obtener_corte` y `registrar_corte`.
+  - Hecho cuando: tests API en verde, 404 ajeno intacto y ningún endpoint admin modificado.
+
+- [ ] **T17. Test de privacidad integral de contratos personales.** RF-15 (parcial), RNF-5/RNF-6.
+  - Dependencias: T15–T16.
+  - Tests primero (deben fallar si algún campo prohibido aparece): recorrer las respuestas de `/mi/historial`, `/{id}` propio, `POST /` y resúmenes `/mi/resumen/*` y afirmar ausencia de `parte_barberia`, `costo`, `margen`, `bruto`, `total_cortes` globales o datos de otro barbero.
+  - Hecho cuando: el test falla ante cualquier filtración futura y pasa con los contratos del paquete; sin cambiar código productivo en esta tarea salvo lo necesario para el test.
+
+- [ ] **T18. Limpiar la parte local de la barbería en el frontend.** RF-15 (parcial), RNF-1.
+  - Dependencias: T15–T16 (el backend ya no la envía).
+  - Verificar primero con grep que nada renderiza `parte_barberia` en vistas de barbero (constatado: solo cálculo local + tipos).
+  - Implementar: retirar el cálculo de `parte_barberia` en el guardado offline de `RegistroCortes.tsx` (conservar `parte_barbero` estimada) y el campo en `CorteLocal` (`db.ts`) si nada más lo lee; el tipo de admin (`DashboardAdmin.tsx`) no se toca.
+  - Hecho cuando: `npm run build` en verde y ningún código de barbero referencia `parte_barberia`.
+
+- [ ] **T19. Regresión y cierre del paquete.** RF-11/RF-14/RF-15 (parciales), RNF-3/RNF-5/RNF-6.
+  - Dependencias: T14–T18.
+  - Ejecutar por archivo las suites tocadas (`test_cortes.py`, `test_roles_permisos.py`, `test_sync_roles.py`, `test_usuarios_auditoria.py`) + suite aislada del paquete 1, todo en verde, con precaución DB real registrada; `npm run build` en verde.
+  - Registrar comandos/resultados en la evidencia de abajo y actualizar el estado sin declarar implementada la spec completa. El cierre requiere revisión independiente (`sdd-reviewer`) y no autoriza paquete 4 ni declara el gate de otros paquetes.
+  - Hecho cuando: todo lo anterior en verde, solo los archivos autorizados cambiaron y queda solicitada la revisión de cierre.
+
+### Evidencia futura (paquete 3)
+
+| Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
+|---|---|---|---|
+| T14 |  |  |  |
+| T15 |  |  |  |
+| T16 |  |  |  |
+| T17 |  |  |  |
+| T18 |  |  |  |
+| T19 |  |  |  |
