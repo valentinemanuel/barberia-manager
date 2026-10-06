@@ -651,3 +651,76 @@ def test_registro_destino_inactivo_con_porcentaje_201(client):
     )
     assert respuesta.status_code == 201
     assert respuesta.json()["barbero_id"] == dest_id
+
+
+def _registrar_corte_con_momento(client, token, servicio_id, momento):
+    body = {"servicio_id": servicio_id, "metodo_pago": "efectivo"}
+    if momento is not None:
+        body["momento_real"] = momento
+    return client.post(
+        "/api/cortes/", json=body, headers={"Authorization": f"Bearer {token}"}
+    )
+
+
+def test_registro_admin_retroactivo_conserva_fecha(client):
+    """T21: el admin registra en el pasado y se conserva esa fecha."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t21a", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "admin_t21a", RolModelo.ADMIN, Decimal("0"))
+    db.close()
+
+    respuesta = _registrar_corte_con_momento(
+        client, _token_para(client, "admin_t21a"), servicio_id, "2020-05-01T10:00:00"
+    )
+    assert respuesta.status_code == 201
+    assert respuesta.json()["fecha"].startswith("2020-05-01T10:00:00")
+
+
+def test_registro_admin_futuro_rechazado_400(client):
+    """T21: momento futuro → 400."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t21b", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "admin_t21b", RolModelo.ADMIN, Decimal("0"))
+    db.close()
+
+    respuesta = _registrar_corte_con_momento(
+        client, _token_para(client, "admin_t21b"), servicio_id, "2999-01-01T00:00:00"
+    )
+    assert respuesta.status_code == 400
+
+
+def test_barbero_no_puede_enviar_momento_400(client):
+    """T21 (RF-8): el barbero no introduce fecha manual."""
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t21c", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+
+    respuesta = _registrar_corte_con_momento(
+        client, _token_para(client, "barbero_t21c"), servicio_id, "2020-05-01T10:00:00"
+    )
+    assert respuesta.status_code == 400
+
+
+def test_registro_sin_momento_usa_fecha_automatica(client):
+    """T21: sin momento, la fecha es automática (≈ ahora UTC)."""
+    from datetime import datetime
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t21d", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+
+    antes = datetime.utcnow().replace(microsecond=0)
+    respuesta = _registrar_corte_con_momento(
+        client, _token_para(client, "barbero_t21d"), servicio_id, None
+    )
+    assert respuesta.status_code == 201
+    fecha = respuesta.json()["fecha"]
+    assert fecha[:10] == antes.strftime("%Y-%m-%d")

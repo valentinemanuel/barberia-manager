@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -77,7 +77,22 @@ def registrar_corte(
             destino = db.query(Usuario).filter(Usuario.id == datos.barbero_id).first()
             if not destino:
                 raise HTTPException(status_code=404, detail="Barbero no encontrado")
-        corte = crear_corte(db, actor, datos.servicio_id, datos.metodo_pago, destino)
+        momento = datos.momento_real
+        if momento is not None:
+            if actor.rol != Rol.ADMIN:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Solo un admin puede indicar el momento real",
+                )
+            if momento.tzinfo is not None:
+                momento = momento.astimezone(timezone.utc).replace(tzinfo=None)
+            if momento > datetime.utcnow():
+                raise HTTPException(
+                    status_code=400, detail="El momento real no puede ser futuro"
+                )
+        corte = crear_corte(
+            db, actor, datos.servicio_id, datos.metodo_pago, destino, momento
+        )
         db.commit()
         db.refresh(corte)
         return corte

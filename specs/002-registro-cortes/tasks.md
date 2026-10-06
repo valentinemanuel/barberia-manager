@@ -291,7 +291,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-1/RF-2/RF-8/RF-10 onli
   - Implementar: `barbero_id: Optional[int]` en `CorteCrear`; `crear_corte` resuelve destinatario (propio por defecto); router exige rol admin si viene destino.
   - Hecho cuando: tests API en verde y el registro propio del barbero no cambia de comportamiento.
 
-- [ ] **T21. Momento retroactivo solo admin.** RF-8/RF-10 (parciales).
+- [x] **T21. Momento retroactivo solo admin.** RF-8/RF-10 (parciales).
   - Dependencias: T20 (mismo flujo de registro).
   - Tests primero: admin registra con `momento_real` pasado → 201 con esa `fecha`; futuro → 400; barbero que envía `momento_real` → 400; sin momento → `fecha` automática (≈ ahora UTC).
   - Implementar: `momento_real: Optional[datetime]` en `CorteCrear`; validación pasado/futuro; el servicio usa el momento o el automático.
@@ -324,7 +324,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-1/RF-2/RF-8/RF-10 onli
 | Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
 |---|---|---|---|
 | T20 | Rojo real: 4 failed (el body ignoraba `barbero_id`; sin 403/404) | Verde: `26 passed` (`test_cortes.py` + `test_sync_roles.py`) | Desde `backend`: pytest por archivo. `barberia.db` hash idéntico; solo `schemas/corte.py` + `corte_service.py` + `routers/cortes.py` + `test_cortes.py`. Cambio: `barbero_id` opcional solo admin (403 barbero, 404 inexistente, inactivo con % permitido); reparto con valores del destinatario; registro propio intacto; sync sin destino sigue propio. |
-| T21 |  |  |  |
+| T21 | Rojo real: 3 failed (momento ignorado: 201 con fecha automática en vez de 2020; sin 400 a futuro ni a barbero) | Verde: `30 passed` (`test_cortes.py` + `test_sync_roles.py`) | Desde `backend`: pytest por archivo. `barberia.db` hash idéntico; solo `schemas/corte.py` + `corte_service.py` + `routers/cortes.py` + `test_cortes.py`. Cambio: `momento_real` opcional solo admin (pasado sin límite, futuro 400, barbero 400, tz normalizada a UTC naive); servicio lo guarda en `fecha`. |
 | T22 |  |  |  |
 | T23 |  |  |  |
 | T24 |  |  |  |

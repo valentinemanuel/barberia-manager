@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy.orm import Session
 
 from app.models.corte import Corte
@@ -11,7 +13,8 @@ def crear_corte(
     barbero: Usuario,
     servicio_id: int,
     metodo_pago: str,
-    destinatario: Usuario | None = None
+    destinatario: Usuario | None = None,
+    momento_real: datetime | None = None
 ) -> Corte:
     """Crea un registro de corte con cálculo automático de porcentajes.
 
@@ -38,6 +41,7 @@ def crear_corte(
         parte_barbero=parte_barbero,
         parte_barberia=parte_barberia,
         metodo_pago=metodo_pago,
+        fecha=momento_real or datetime.utcnow(),
     )
     db.add(corte)
     # Sin commit: la unidad de trabajo la posee el llamador (router online o
