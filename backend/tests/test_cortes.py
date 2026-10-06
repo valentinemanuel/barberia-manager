@@ -1012,3 +1012,43 @@ def test_replay_con_catalogo_cambiado_no_recalcula(client):
     assert r2.json()["id"] == r1.json()["id"]
     assert r2.json()["parte_barbero"] == "50.00"
     assert r2.json()["precio"] == "100.00"
+
+
+def test_doble_envio_simultaneo_un_solo_corte(client):
+    """T31: dos hilos con misma UUID → un solo corte y mismo id en ambos."""
+    import threading
+    import uuid as uuid_lib
+    from app.models.corte import Corte as CorteModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t31", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+
+    token = _token_para(client, "barbero_t31")
+    op_id = str(uuid_lib.uuid4())
+    body = {
+        "servicio_id": servicio_id,
+        "metodo_pago": "efectivo",
+        "operacion_uuid": op_id,
+    }
+    resultados = []
+
+    def _post():
+        respuesta = client.post(
+            "/api/cortes/", json=body, headers={"Authorization": f"Bearer {token}"}
+        )
+        resultados.append((respuesta.status_code, respuesta.json().get("id")))
+
+    hilos = [threading.Thread(target=_post) for _ in range(2)]
+    for hilo in hilos:
+        hilo.start()
+    for hilo in hilos:
+        hilo.join()
+
+    assert sorted(r[0] for r in resultados) == [201, 201]
+    assert resultados[0][1] == resultados[1][1] is not None
+
+    db = TestingSessionLocal()
+    assert db.query(CorteModelo).count() == 1
+    db.close()

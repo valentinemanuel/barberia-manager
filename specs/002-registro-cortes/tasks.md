@@ -398,7 +398,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-32 + base RF-30). No s
   - Tests primero: replay con catálogo cambiado entremedio (precio/porcentaje distintos) devuelve el acuse original con el snapshot aplicado original, sin recalcular ni crear otro corte.
   - Hecho cuando: el replay no toca `corte_service` (verificable por snapshot idéntico) y pasa el test.
 
-- [ ] **T31. Doble envío simultáneo.** RF-32 (parcial), RNF-6.
+- [x] **T31. Doble envío simultáneo.** RF-32 (parcial), RNF-6.
   - Dependencias: T27–T28.
   - Tests primero: dos hilos con misma UUID contra TestClient → un solo corte en DB y ambos acuses con el mismo `id` (reintentar hasta 3 veces si hay contención SQLite; si la contención es sistemática, documentar y usar secuencial + constraint única como red).
   - Hecho cuando: unicidad garantizada por constraint + manejo, no por suerte de timing.
@@ -424,6 +424,6 @@ Aprobación recibida: alcance aprobado por el usuario (RF-32 + base RF-30). No s
 | T28 | Rojo real: doble POST con misma UUID creó 2 cortes (`assert 1 == 2`) | Verde: `38 passed` (2 archivos) | Desde `backend`: pytest por archivo. DB estable en baseline T27 (`b691f8c5…`, tabla vacía por `create_all` histórico); solo `schemas/corte.py` + `routers/cortes.py` + `test_cortes.py`. Cambio: `operacion_uuid` opcional (UUID→422 automático), ejecutor con namespace `web` y payload de strings; sin UUID el camino no cambia ni un byte (misma llamada). Solo se guarda estado aceptado; registrar rechazos queda para paquete 6. |
 | T29 | Rojo real: conflicto devolvía 400 en vez de 409 | Verde: `39 passed` (2 archivos) | DB estable en baseline T27; solo `operacion_corte_service.py` + `routers/cortes.py` + `test_cortes.py`. Cambio: `ConflictoIdentidad(ValueError)` + 409 en router (orden de except preservado); acuse original intacto y 1 solo corte. |
 | T30 | Verde inicial real (el ejecutor jamás reejecuta por diseño T27; sin rojo artificial ni cambio productivo) | Mismo verde | Test: catálogo cambiado (200.00/60%) + replay → mismo id, `50.00`/`100.00` originales. Solo `test_cortes.py` + este documento. |
-| T31 |  |  |  |
+| T31 | Rojo real y flaky: 2/5 corridas con un solo resultado (el perdedor moría con 500 por contención) | Verde estable: 6/6 corridas + `64 passed` (3 archivos) + `167` aislada | DB estable en baseline T27; solo `operacion_corte_service.py` + `routers/cortes.py` + `test_cortes.py`. Cambio: reintento acotado (3) con rollback en flush (ejecutor) y en commit (router); el constraint único decide el ganador y el resto converge a su acuse. |
 | T32 |  |  |  |
 | T33 |  |  |  |

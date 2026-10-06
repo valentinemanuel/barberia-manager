@@ -9,6 +9,7 @@ import hashlib
 import json
 from typing import Any, Callable
 
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from app.models.operacion_corte import (
@@ -16,6 +17,10 @@ from app.models.operacion_corte import (
     ModoCaptura,
     OperacionCorte,
 )
+
+# Reintentos ante contención SQLite (el constraint único garantiza que a lo
+# sumo un ganador persiste; el resto converge a su acuse).
+MAX_INTENTOS = 3
 
 
 def hash_canonico(payload: dict) -> str:
@@ -41,34 +46,41 @@ def ejecutar_operacion(
 ) -> dict[str, Any]:
     """Ejecuta una sola vez por clave; el replay devuelve el acuse guardado."""
     firma = hash_canonico(payload)
-    existente = (
-        db.query(OperacionCorte)
-        .filter(
-            OperacionCorte.actor_id == actor_id,
-            OperacionCorte.namespace_cliente == namespace,
-            OperacionCorte.operacion_id == operacion_id,
-        )
-        .first()
-    )
-    if existente is not None:
-        if existente.hash_operacion != firma:
-            raise ConflictoIdentidad(
-                "Conflicto de identidad: la operación ya existe con otro contenido"
+    for _intento in range(MAX_INTENTOS):
+        existente = (
+            db.query(OperacionCorte)
+            .filter(
+                OperacionCorte.actor_id == actor_id,
+                OperacionCorte.namespace_cliente == namespace,
+                OperacionCorte.operacion_id == operacion_id,
             )
-        return dict(existente.resultado)
-
-    resultado = ejecutar()
-    db.add(
-        OperacionCorte(
-            actor_id=actor_id,
-            namespace_cliente=namespace,
-            operacion_id=operacion_id,
-            accion=accion,
-            hash_operacion=firma,
-            modo_captura=ModoCaptura(modo),
-            estado=EstadoOperacion.ACEPTADA,
-            resultado=resultado,
+            .first()
         )
-    )
-    db.flush()
-    return resultado
+        if existente is not None:
+            if existente.hash_operacion != firma:
+                raise ConflictoIdentidad(
+                    "Conflicto de identidad: la operación ya existe con otro contenido"
+                )
+            return dict(existente.resultado)
+        try:
+            resultado = ejecutar()
+            db.add(
+                OperacionCorte(
+                    actor_id=actor_id,
+                    namespace_cliente=namespace,
+                    operacion_id=operacion_id,
+                    accion=accion,
+                    hash_operacion=firma,
+                    modo_captura=ModoCaptura(modo),
+                    estado=EstadoOperacion.ACEPTADA,
+                    resultado=resultado,
+                )
+            )
+            db.flush()
+            return resultado
+        except (IntegrityError, OperationalError):
+            # Otro escritor ganó la clave: deshacer nuestro efecto pendiente
+            # y reintentar desde el lookup (que encontrará su acuse).
+            db.rollback()
+            continue
+    raise ValueError("No se pudo registrar la operación por contención; reintente")
