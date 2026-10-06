@@ -12,7 +12,10 @@ class CorteBase(BaseModel):
 
 
 class CorteCrear(CorteBase):
-    pass
+    # Solo admin: barbero destinatario. Si lo envía un barbero → 403.
+    barbero_id: Optional[int] = None
+    # Solo admin: momento real retroactivo (nunca futuro). Barbero → 400.
+    momento_real: Optional[datetime] = None
 
 
 class CorteResponse(BaseModel):

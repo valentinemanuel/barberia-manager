@@ -569,3 +569,286 @@ def test_contratos_personales_sin_datos_del_negocio(client):
         resumen = client.get(f"/api/cortes{ruta}", headers=auth)
         assert resumen.status_code == 200
         assert _sin_campos_prohibidos(resumen.json()) == []
+
+
+def _registrar_corte_admin(client, token_admin, servicio_id, destino_id):
+    return client.post(
+        "/api/cortes/",
+        json={
+            "servicio_id": servicio_id,
+            "metodo_pago": "efectivo",
+            "barbero_id": destino_id,
+        },
+        headers={"Authorization": f"Bearer {token_admin}"},
+    )
+
+
+def test_registro_admin_para_otro_barbero(client):
+    """T20: el admin registra para otro barbero con el porcentaje del destino."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t20a", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "admin_t20", RolModelo.ADMIN, Decimal("0"))
+    dest_id = db.query(Usuario).filter(Usuario.usuario == "barbero_t20a").first().id
+    db.close()
+
+    respuesta = _registrar_corte_admin(
+        client, _token_para(client, "admin_t20"), servicio_id, dest_id
+    )
+    assert respuesta.status_code == 201
+    data = respuesta.json()
+    assert data["barbero_id"] == dest_id
+    assert data["parte_barbero"] == "50.00"
+
+
+def test_registro_destino_inexistente_404(client):
+    """T20: destino inexistente → 404 sin revelar nada."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t20b", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "admin_t20b", RolModelo.ADMIN, Decimal("0"))
+    db.close()
+
+    respuesta = _registrar_corte_admin(
+        client, _token_para(client, "admin_t20b"), servicio_id, 9999
+    )
+    assert respuesta.status_code == 404
+
+
+def test_barbero_no_puede_enviar_destino_403(client):
+    """T20: el barbero no puede enviar barbero_id, ni siquiera el propio."""
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t20c", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    propio_id = db.query(Usuario).filter(Usuario.usuario == "barbero_t20c").first().id
+    db.close()
+
+    respuesta = _registrar_corte_admin(
+        client, _token_para(client, "barbero_t20c"), servicio_id, propio_id
+    )
+    assert respuesta.status_code == 403
+
+
+def test_registro_destino_inactivo_con_porcentaje_201(client):
+    """T20 (RF-56): destino inactivo con porcentaje → 201."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t20d", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "admin_t20d", RolModelo.ADMIN, Decimal("0"))
+    db.query(Usuario).filter(Usuario.usuario == "barbero_t20d").update({"activo": False})
+    db.commit()
+    dest_id = db.query(Usuario).filter(Usuario.usuario == "barbero_t20d").first().id
+    db.close()
+
+    respuesta = _registrar_corte_admin(
+        client, _token_para(client, "admin_t20d"), servicio_id, dest_id
+    )
+    assert respuesta.status_code == 201
+    assert respuesta.json()["barbero_id"] == dest_id
+
+
+def _registrar_corte_con_momento(client, token, servicio_id, momento):
+    body = {"servicio_id": servicio_id, "metodo_pago": "efectivo"}
+    if momento is not None:
+        body["momento_real"] = momento
+    return client.post(
+        "/api/cortes/", json=body, headers={"Authorization": f"Bearer {token}"}
+    )
+
+
+def test_registro_admin_retroactivo_conserva_fecha(client):
+    """T21: el admin registra en el pasado y se conserva esa fecha."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t21a", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "admin_t21a", RolModelo.ADMIN, Decimal("0"))
+    db.close()
+
+    respuesta = _registrar_corte_con_momento(
+        client, _token_para(client, "admin_t21a"), servicio_id, "2020-05-01T10:00:00"
+    )
+    assert respuesta.status_code == 201
+    assert respuesta.json()["fecha"].startswith("2020-05-01T10:00:00")
+
+
+def test_registro_admin_futuro_rechazado_400(client):
+    """T21: momento futuro → 400."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t21b", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "admin_t21b", RolModelo.ADMIN, Decimal("0"))
+    db.close()
+
+    respuesta = _registrar_corte_con_momento(
+        client, _token_para(client, "admin_t21b"), servicio_id, "2999-01-01T00:00:00"
+    )
+    assert respuesta.status_code == 400
+
+
+def test_barbero_no_puede_enviar_momento_400(client):
+    """T21 (RF-8): el barbero no introduce fecha manual."""
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t21c", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+
+    respuesta = _registrar_corte_con_momento(
+        client, _token_para(client, "barbero_t21c"), servicio_id, "2020-05-01T10:00:00"
+    )
+    assert respuesta.status_code == 400
+
+
+def test_registro_sin_momento_usa_fecha_automatica(client):
+    """T21: sin momento, la fecha es automática (≈ ahora UTC)."""
+    from datetime import datetime
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t21d", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+
+    antes = datetime.utcnow().replace(microsecond=0)
+    respuesta = _registrar_corte_con_momento(
+        client, _token_para(client, "barbero_t21d"), servicio_id, None
+    )
+    assert respuesta.status_code == 201
+    fecha = respuesta.json()["fecha"]
+    assert fecha[:10] == antes.strftime("%Y-%m-%d")
+
+
+def test_reparto_usa_valores_actuales_del_destinatario(client):
+    """T22 (RF-5 parcial): admin retroactivo para barbero 30% usa el % del
+    destino (60.00/140.00 sobre 200.00), no el 0% del admin; fecha conservada."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t22", Decimal("30"), Decimal("200.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "admin_t22", RolModelo.ADMIN, Decimal("0"))
+    dest_id = db.query(Usuario).filter(Usuario.usuario == "barbero_t22").first().id
+    db.close()
+
+    respuesta = client.post(
+        "/api/cortes/",
+        json={
+            "servicio_id": servicio_id,
+            "metodo_pago": "tarjeta",
+            "barbero_id": dest_id,
+            "momento_real": "2021-03-15T09:30:00",
+        },
+        headers={"Authorization": f"Bearer {_token_para(client, 'admin_t22')}"},
+    )
+    assert respuesta.status_code == 201
+    data = respuesta.json()
+    assert data["barbero_id"] == dest_id
+    assert data["precio"] == "200.00"
+    assert Decimal(data["porcentaje_barbero"]) == Decimal("30")
+    assert data["parte_barbero"] == "60.00"
+    assert data["fecha"].startswith("2021-03-15T09:30:00")
+
+
+def test_errores_exactos_sin_filtraciones(client):
+    """T23: cada rechazo con su código y mensaje exacto, sin datos ajenos."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t23", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "admin_t23", RolModelo.ADMIN, Decimal("0"))
+    db.close()
+
+    token_admin = _token_para(client, "admin_t23")
+    token_barbero = _token_para(client, "barbero_t23")
+
+    r = _registrar_corte_admin(client, token_admin, servicio_id, 9999)
+    assert r.status_code == 404
+    assert r.json()["detail"] == "Barbero no encontrado"
+
+    r = _registrar_corte_con_momento(client, token_barbero, servicio_id, None)
+    assert r.status_code == 201
+    r = client.post(
+        "/api/cortes/",
+        json={"servicio_id": servicio_id, "metodo_pago": "efectivo", "barbero_id": 1},
+        headers={"Authorization": f"Bearer {token_barbero}"},
+    )
+    assert r.status_code == 403
+    assert "admin" in r.json()["detail"].lower()
+
+    r = _registrar_corte_con_momento(client, token_admin, servicio_id, "2999-06-01T00:00:00")
+    assert r.status_code == 400
+    assert "futuro" in r.json()["detail"].lower()
+
+    r = client.post(
+        "/api/cortes/",
+        json={"servicio_id": "no-entero", "metodo_pago": "efectivo"},
+        headers={"Authorization": f"Bearer {token_barbero}"},
+    )
+    assert r.status_code == 422
+
+
+def test_listado_global_admin_contrato_completo(client):
+    """T24: el listado global de admin conserva el contrato completo."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t24", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "admin_t24", RolModelo.ADMIN, Decimal("0"))
+    db.close()
+
+    _login_y_registrar_corte(client, "barbero_t24", servicio_id)
+    respuesta = client.get(
+        "/api/cortes/",
+        headers={"Authorization": f"Bearer {_token_para(client, 'admin_t24')}"},
+    )
+    assert respuesta.status_code == 200
+    items = respuesta.json()
+    assert len(items) == 1
+    assert items[0]["parte_barberia"] == "50.00"
+
+
+def test_destino_admin_hacia_otro_admin_400(client):
+    """Decisión RF-2: el destino de un admin debe ser barbero, no otro admin."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t26", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "admin_t26a", RolModelo.ADMIN, Decimal("0"))
+    _crear_usuario(db, "admin_t26b", RolModelo.ADMIN, Decimal("0"))
+    otro_id = db.query(Usuario).filter(Usuario.usuario == "admin_t26b").first().id
+    db.close()
+
+    respuesta = _registrar_corte_admin(
+        client, _token_para(client, "admin_t26a"), servicio_id, otro_id
+    )
+    assert respuesta.status_code == 400
+    assert "barbero" in respuesta.json()["detail"].lower()
+
+
+def test_destino_propio_explicito_del_admin_201(client):
+    """Decisión RF-2: el admin puede indicarse a sí mismo (registro propio)."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t26c", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "admin_t26c", RolModelo.ADMIN, Decimal("0"))
+    propio_id = db.query(Usuario).filter(Usuario.usuario == "admin_t26c").first().id
+    db.close()
+
+    respuesta = _registrar_corte_admin(
+        client, _token_para(client, "admin_t26c"), servicio_id, propio_id
+    )
+    assert respuesta.status_code == 201
+    assert respuesta.json()["barbero_id"] == propio_id
