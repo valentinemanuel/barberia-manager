@@ -412,3 +412,77 @@ def test_dto_compat_conserva_parte_barberia_para_admin():
         **{**_payload_corte_respuesta(), "parte_barberia": Decimal("50.00")}
     )
     assert completo.parte_barberia == Decimal("50.00")
+
+
+def _crear_usuario(db, login, rol, porcentaje=Decimal("50")):
+    usuario = Usuario(
+        nombre="Nombre",
+        apellido="Test",
+        email=f"{login}@test.com",
+        usuario=login,
+        hashed_password=pwd_context.hash("pass"),
+        rol=rol,
+        porcentaje_ganancia=porcentaje,
+        activo=True,
+    )
+    db.add(usuario)
+    db.commit()
+    return usuario
+
+
+def _token_para(client, login):
+    return client.post(
+        "/api/auth/login", data={"username": login, "password": "pass"}
+    ).json()["access_token"]
+
+
+def test_historial_propio_sin_parte_barberia(client):
+    """T15: el historial del barbero no expone parte_barberia y es solo propio."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t15a", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "barbero_t15b", RolModelo.BARBERO)
+    db.close()
+
+    _login_y_registrar_corte(client, "barbero_t15a", servicio_id)
+    _login_y_registrar_corte(client, "barbero_t15b", servicio_id)
+
+    respuesta = client.get(
+        "/api/cortes/mi/historial",
+        headers={"Authorization": f"Bearer {_token_para(client, 'barbero_t15a')}"},
+    )
+    assert respuesta.status_code == 200
+    items = respuesta.json()
+    assert len(items) == 1
+    assert "parte_barberia" not in items[0]
+    assert items[0]["parte_barbero"] == "50.00"
+    assert "servicio_id" in items[0] and "metodo_pago" in items[0]
+
+
+def test_historial_admin_ve_solo_lo_propio(client):
+    """T15: el admin en /mi/historial ve únicamente sus cortes."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t15c", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "admin_t15", RolModelo.ADMIN, Decimal("0"))
+    db.close()
+
+    _login_y_registrar_corte(client, "barbero_t15c", servicio_id)
+    _login_y_registrar_corte(client, "admin_t15", servicio_id)
+
+    respuesta = client.get(
+        "/api/cortes/mi/historial",
+        headers={"Authorization": f"Bearer {_token_para(client, 'admin_t15')}"},
+    )
+    assert respuesta.status_code == 200
+    items = respuesta.json()
+    assert len(items) == 1
+    assert "parte_barberia" not in items[0]
+    db = TestingSessionLocal()
+    admin_id = db.query(Usuario).filter(Usuario.usuario == "admin_t15").first().id
+    db.close()
+    assert items[0]["barbero_id"] == admin_id

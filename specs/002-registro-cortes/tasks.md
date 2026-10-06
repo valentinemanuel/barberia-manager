@@ -219,7 +219,7 @@ Decisión del gate registrada: se crea el DTO personal `CortePersonal` (= `Corte
   - Implementar: agregar `CortePersonal` en `schemas/corte.py` (mismos campos menos `parte_barberia`); no modificar `CorteResponse`.
   - Hecho cuando: tests schema-level en verde sin DB y el contrato admin no cambia.
 
-- [ ] **T15. Historial propio con DTO personal.** RF-11/RF-15 (parciales).
+- [x] **T15. Historial propio con DTO personal.** RF-11/RF-15 (parciales).
   - Dependencias: T14.
   - Tests primero: `GET /mi/historial` como barbero no incluye `parte_barberia` en ningún ítem y sí incluye `parte_barbero`, servicio, momento real, método y estados; como admin en `/mi/historial` ve solo lo propio.
   - Implementar: `response_model=list[CortePersonal]` en `mis_cortes`.
@@ -253,7 +253,7 @@ Decisión del gate registrada: se crea el DTO personal `CortePersonal` (= `Corte
 | Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
 |---|---|---|---|
 | T14 | Rojo real: `ImportError: cannot import name 'CortePersonal'` | Verde: `14 passed` en `tests/test_cortes.py` | Desde `backend`: `python -m pytest tests/test_cortes.py -q`. Schema-level sin DB; `barberia.db` hash idéntico (`3fe8caa6…f924a9`); solo `schemas/corte.py` + `test_cortes.py`. Cambio: `CortePersonal` agregado, `CorteResponse` intacto. |
-| T15 |  |  |  |
+| T15 | Rojo real: 2 failed (`"parte_barberia" not in items[0]` con `CorteResponse`) | Verde: `39 passed` (`test_cortes.py` + `test_roles_permisos.py`) | Desde `backend`: pytest por archivo. `barberia.db` hash idéntico; solo `routers/cortes.py` + `test_cortes.py`. Cambio: `response_model=list[CortePersonal]` en `mis_cortes`; listado global admin intacto. |
 | T16 |  |  |  |
 | T17 |  |  |  |
 | T18 |  |  |  |

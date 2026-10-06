@@ -7,7 +7,7 @@ from app.database import get_db
 from app.dependencies import requerir_admin, obtener_usuario_actual
 from app.models.corte import Corte
 from app.models.usuario import Usuario, Rol
-from app.schemas.corte import CorteCrear, CorteResponse
+from app.schemas.corte import CorteCrear, CorteResponse, CortePersonal
 from app.services.corte_service import crear_corte
 
 router = APIRouter(prefix="/api/cortes", tags=["Cortes"])
@@ -24,7 +24,7 @@ def listar_cortes(
     return db.query(Corte).order_by(Corte.fecha.desc()).offset(skip).limit(limit).all()
 
 
-@router.get("/mi/historial", response_model=list[CorteResponse])
+@router.get("/mi/historial", response_model=list[CortePersonal])
 def mis_cortes(
     db: Session = Depends(get_db),
     barbero: Usuario = Depends(obtener_usuario_actual),
