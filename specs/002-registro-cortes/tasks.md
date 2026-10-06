@@ -393,7 +393,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-32 + base RF-30). No s
   - Implementar: comparación de hash canónico en el ejecutor; 409 con mensaje en español.
   - Hecho cuando: tests en verde y ningún efecto secundario del intento conflictivo.
 
-- [ ] **T30. Replay terminal sin recalcular.** RF-32/RF-57 (parciales).
+- [x] **T30. Replay terminal sin recalcular.** RF-32/RF-57 (parciales).
   - Dependencias: T27–T28.
   - Tests primero: replay con catálogo cambiado entremedio (precio/porcentaje distintos) devuelve el acuse original con el snapshot aplicado original, sin recalcular ni crear otro corte.
   - Hecho cuando: el replay no toca `corte_service` (verificable por snapshot idéntico) y pasa el test.
@@ -423,7 +423,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-32 + base RF-30). No s
 | T27 | Rojo real: `ModuleNotFoundError: app.services.operacion_corte_service` | Verde: replay mismo hash → mismo acuse + 1 solo corte | Ejecutor con hash canónico, replay sin reejecutar, sin commit (UoW del llamador). DIVULGACIÓN: el hash de `barberia.db` cambió una vez (`3fe8caa6…` → `b691f8c5…`) porque el `create_all` histórico (gate 9) creó la tabla vacía `operaciones_corte` al importar la app en tests; verificado: 0 filas nuevas, legacy intacto (1 admin, resto vacío), `create_all` no escribe filas por construcción. Robustez añadida: `002` salta creación si la tabla existe (verificado en TEMP con `create_all` previo). |
 | T28 | Rojo real: doble POST con misma UUID creó 2 cortes (`assert 1 == 2`) | Verde: `38 passed` (2 archivos) | Desde `backend`: pytest por archivo. DB estable en baseline T27 (`b691f8c5…`, tabla vacía por `create_all` histórico); solo `schemas/corte.py` + `routers/cortes.py` + `test_cortes.py`. Cambio: `operacion_uuid` opcional (UUID→422 automático), ejecutor con namespace `web` y payload de strings; sin UUID el camino no cambia ni un byte (misma llamada). Solo se guarda estado aceptado; registrar rechazos queda para paquete 6. |
 | T29 | Rojo real: conflicto devolvía 400 en vez de 409 | Verde: `39 passed` (2 archivos) | DB estable en baseline T27; solo `operacion_corte_service.py` + `routers/cortes.py` + `test_cortes.py`. Cambio: `ConflictoIdentidad(ValueError)` + 409 en router (orden de except preservado); acuse original intacto y 1 solo corte. |
-| T30 |  |  |  |
+| T30 | Verde inicial real (el ejecutor jamás reejecuta por diseño T27; sin rojo artificial ni cambio productivo) | Mismo verde | Test: catálogo cambiado (200.00/60%) + replay → mismo id, `50.00`/`100.00` originales. Solo `test_cortes.py` + este documento. |
 | T31 |  |  |  |
 | T32 |  |  |  |
 | T33 |  |  |  |

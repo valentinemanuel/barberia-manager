@@ -978,3 +978,37 @@ def test_conflicto_identidad_mismo_uuid_distinto_contenido_409(client):
     db = TestingSessionLocal()
     assert db.query(CorteModelo).count() == 1
     db.close()
+
+
+def test_replay_con_catalogo_cambiado_no_recalcula(client):
+    """T30: replay tras cambiar catálogo devuelve el acuse original intacto."""
+    import uuid as uuid_lib
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t30", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+
+    token = _token_para(client, "barbero_t30")
+    op_id = str(uuid_lib.uuid4())
+    body = {
+        "servicio_id": servicio_id,
+        "metodo_pago": "efectivo",
+        "operacion_uuid": op_id,
+    }
+    r1 = client.post("/api/cortes/", json=body, headers={"Authorization": f"Bearer {token}"})
+    assert r1.status_code == 201
+
+    db = TestingSessionLocal()
+    db.query(Servicio).filter(Servicio.id == servicio_id).update({"precio": Decimal("200.00")})
+    db.query(Usuario).filter(Usuario.usuario == "barbero_t30").update(
+        {"porcentaje_ganancia": Decimal("60")}
+    )
+    db.commit()
+    db.close()
+
+    r2 = client.post("/api/cortes/", json=body, headers={"Authorization": f"Bearer {token}"})
+    assert r2.status_code == 201
+    assert r2.json()["id"] == r1.json()["id"]
+    assert r2.json()["parte_barbero"] == "50.00"
+    assert r2.json()["precio"] == "100.00"
