@@ -17,7 +17,12 @@ def crear_corte(
     if not servicio:
         raise ValueError("Servicio no encontrado o inactivo")
 
-    parte_barbero, parte_barberia = calcular_partes(servicio.precio, barbero.porcentaje_ganancia)
+    try:
+        parte_barbero, parte_barberia = calcular_partes(servicio.precio, barbero.porcentaje_ganancia)
+    except (TypeError, ValueError) as error:
+        # Toda entrada monetaria inválida (incluido un no-Decimal llegado
+        # desde almacenamiento) se rechaza con 400 en el router, nunca 500.
+        raise ValueError(str(error)) from error
 
     corte = Corte(
         barbero_id=barbero.id,

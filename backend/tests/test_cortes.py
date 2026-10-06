@@ -150,3 +150,112 @@ def test_crear_corte_redondeo_matematico_mitad_hacia_arriba(client):
     data = response.json()
     assert data["parte_barbero"] == "0.03"
     assert data["parte_barberia"] == "0.02"
+
+
+def test_crear_corte_rechaza_precio_con_mas_de_dos_decimales():
+    """T8: precio 10.005 se rechaza con ValueError en español (el router lo vuelve 400).
+
+    Nota: a nivel API con filas persistidas no se puede provocar, porque el
+    ORM redondea a escala 2 al leer Numeric (verificado: raw 10.005 -> ORM
+    Decimal('10.01')). Por eso se prueba el guard del servicio con objetos
+    transient que conservan la precisión exacta de entrada.
+    """
+    from app.services.corte_service import crear_corte
+
+    servicio = Servicio(
+        nombre="Servicio T8",
+        descripcion="Precision excesiva",
+        precio=Decimal("10.005"),
+        duracion_minutos=30,
+        activo=True,
+    )
+    barbero = Usuario(
+        nombre="Barbero",
+        apellido="Test",
+        email="barbero_t8a@test.com",
+        usuario="barbero_t8a",
+        hashed_password=pwd_context.hash("pass"),
+        rol=Rol.BARBERO,
+        porcentaje_ganancia=Decimal("50"),
+        activo=True,
+    )
+
+    with pytest.raises(ValueError, match="dos decimales"):
+        crear_corte(_DbNula(servicio), barbero, 1, "efectivo")
+
+
+def test_crear_corte_rechaza_porcentaje_con_mas_de_dos_decimales():
+    """T8: porcentaje 50.001 se rechaza con ValueError en español."""
+    from app.services.corte_service import crear_corte
+
+    servicio = Servicio(
+        nombre="Servicio T8",
+        descripcion="Precision excesiva",
+        precio=Decimal("100.00"),
+        duracion_minutos=30,
+        activo=True,
+    )
+    barbero = Usuario(
+        nombre="Barbero",
+        apellido="Test",
+        email="barbero_t8b@test.com",
+        usuario="barbero_t8b",
+        hashed_password=pwd_context.hash("pass"),
+        rol=Rol.BARBERO,
+        porcentaje_ganancia=Decimal("50.001"),
+        activo=True,
+    )
+
+    with pytest.raises(ValueError, match="dos decimales"):
+        crear_corte(_DbNula(servicio), barbero, 1, "efectivo")
+
+
+def test_crear_corte_rechaza_valor_no_decimal_como_400():
+    """T8: un float (p. ej. REAL leido sin escala) se rechaza, nunca 500."""
+    from app.services.corte_service import crear_corte
+
+    servicio = Servicio(
+        nombre="Servicio T8",
+        descripcion="Float infiltrado",
+        precio=10.05,
+        duracion_minutos=30,
+        activo=True,
+    )
+    barbero = Usuario(
+        nombre="Barbero",
+        apellido="Test",
+        email="barbero_t8c@test.com",
+        usuario="barbero_t8c",
+        hashed_password=pwd_context.hash("pass"),
+        rol=Rol.BARBERO,
+        porcentaje_ganancia=Decimal("50"),
+        activo=True,
+    )
+
+    with pytest.raises(ValueError, match="Decimal"):
+        crear_corte(_DbNula(servicio), barbero, 1, "efectivo")
+
+
+class _DbNula:
+    """Stub de sesión para T8: devuelve el servicio transient sin tocar DB."""
+
+    def __init__(self, servicio):
+        self._servicio = servicio
+
+    def query(self, _modelo):
+        return self
+
+    def filter(self, *_criterios):
+        return self
+
+    def first(self):
+        return self._servicio
+
+    def add(self, _obj):
+        pass
+
+    def commit(self):
+        pass
+
+    def refresh(self, _obj):
+        pass
