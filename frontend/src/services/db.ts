@@ -7,7 +7,6 @@ export interface CorteLocal {
   precio: number
   porcentaje_barbero: number
   parte_barbero: number
-  parte_barberia: number
   metodo_pago: string
   fecha: string
   sincronizado: boolean
