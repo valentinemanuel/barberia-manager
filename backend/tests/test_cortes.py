@@ -852,3 +852,49 @@ def test_destino_propio_explicito_del_admin_201(client):
     )
     assert respuesta.status_code == 201
     assert respuesta.json()["barbero_id"] == propio_id
+
+
+def _ejecutar_registro_idempotente(db, actor, servicio_id, op_id, ns="web"):
+    """T27: registra un corte vía ejecutor idempotente (efecto único)."""
+    import uuid as uuid_lib
+    from app.services.corte_service import crear_corte
+    from app.services.operacion_corte_service import ejecutar_operacion
+
+    payload = {"servicio_id": servicio_id, "metodo_pago": "efectivo"}
+
+    def _efecto():
+        corte = crear_corte(db, actor, servicio_id, "efectivo")
+        return {"corte_id": corte.id, "estado": "aceptada"}
+
+    return ejecutar_operacion(
+        db,
+        actor_id=actor.id,
+        namespace=ns,
+        operacion_id=op_id or str(uuid_lib.uuid4()),
+        accion="crear_corte",
+        payload=payload,
+        modo="online",
+        ejecutar=_efecto,
+    )
+
+
+def test_operacion_replay_devuelve_acuse_sin_reejecutar(client):
+    """T27: misma clave + mismo hash → un solo corte y mismo acuse."""
+    import uuid as uuid_lib
+    from app.models.corte import Corte
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t27", Decimal("50"), Decimal("100.00"))
+    actor = db.query(Usuario).filter(Usuario.usuario == "barbero_t27").first()
+    servicio_id = db.query(Servicio).first().id
+    op_id = str(uuid_lib.uuid4())
+
+    acuse1 = _ejecutar_registro_idempotente(db, actor, servicio_id, op_id)
+    db.commit()
+    acuse2 = _ejecutar_registro_idempotente(db, actor, servicio_id, op_id)
+    db.commit()
+
+    assert acuse1 == acuse2
+    assert acuse1["estado"] == "aceptada"
+    assert db.query(Corte).count() == 1
+    db.close()

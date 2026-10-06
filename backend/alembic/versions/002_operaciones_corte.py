@@ -10,6 +10,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 revision: str = "002_operaciones_corte"
 down_revision: Union[str, Sequence[str], None] = "001_base_legacy"
@@ -18,6 +19,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    if "operaciones_corte" in inspect(op.get_bind()).get_table_names():
+        # Coexistencia con create_all (main.py:22): la tabla ya existe
+        # vacía; no se recrea ni se toca. Solo registra la versión.
+        print("INFO 002_operaciones_corte: tabla ya existente, nada que crear.")
+        return
     op.create_table(
         "operaciones_corte",
         sa.Column("id", sa.Integer(), nullable=False),

@@ -375,7 +375,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-32 + base RF-30). No s
   - Implementar: modelo `OperacionCorte` (actor_id, namespace_cliente, operacion_id UUID, accion, hash, modo_captura, estado, resultado JSON, recibida_en UTC; única la tupla clave) + revisión `002_operaciones_corte.py` solo-creación.
   - Hecho cuando: ambos escenarios TEMP verificados y prohibido aplicar contra base real en este paquete.
 
-- [ ] **T27. Ejecutor idempotente (get-or-create + hash).** RF-32 (parcial).
+- [x] **T27. Ejecutor idempotente (get-or-create + hash).** RF-32 (parcial).
   - Dependencias: T26.
   - Tests primero: primera ejecución con clave+hash crea y devuelve resultado; segunda con misma clave + mismo hash devuelve el acuse guardado sin reejecutar (el efecto ocurre una sola vez: un solo corte en DB).
   - Implementar: `operacion_corte_service.ejecutar` (lookup por clave; si existe y hash coincide → acuse; si no → ejecuta callback en la misma UoW, guarda resultado, un commit).
@@ -420,7 +420,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-32 + base RF-30). No s
 | Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
 |---|---|---|---|
 | T26 | Rojo real: `history` mostraba solo `001` | Verde: `history` con `002`; TEMP vacía crea solo `operaciones_corte` (+`alembic_version`); TEMP legacy intacta + tabla nueva; repetir no-op | `upgrade` solo en TEMP (`ALEMBIC_SQLALCHEMY_URL`); `barberia.db` hash idéntico (`3fe8caa6…f924a9`); prohibido aplicar contra base real. Modelo + `__init__` + revisión `002`. |
-| T27 |  |  |  |
+| T27 | Rojo real: `ModuleNotFoundError: app.services.operacion_corte_service` | Verde: replay mismo hash → mismo acuse + 1 solo corte | Ejecutor con hash canónico, replay sin reejecutar, sin commit (UoW del llamador). DIVULGACIÓN: el hash de `barberia.db` cambió una vez (`3fe8caa6…` → `b691f8c5…`) porque el `create_all` histórico (gate 9) creó la tabla vacía `operaciones_corte` al importar la app en tests; verificado: 0 filas nuevas, legacy intacto (1 admin, resto vacío), `create_all` no escribe filas por construcción. Robustez añadida: `002` salta creación si la tabla existe (verificado en TEMP con `create_all` previo). |
 | T28 |  |  |  |
 | T29 |  |  |  |
 | T30 |  |  |  |
