@@ -115,7 +115,8 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 
 ## Spec 002 — paquete 3 redactado (2026-10-06)
 - Gate §11.2 (`parte_barberia` en DTO personal): el usuario rechaza documentar excepción y aprueba corregir ahora. Verificado: reportes solo admin, 3 endpoints personales afectados, frontend sin display en vistas barbero, sin consumidores externos.
-- `tasks.md` con T14–T19 (~2–3h) en rama `feat/spec-002-paquete-3-contratos-personales`: DTO `CortePersonal`, 3 endpoints, test de privacidad integral, limpieza frontend y regresión. Decisión registrada: detalle compartido pasa a DTO personal; admin conserva listado + reportes. Implementación pendiente de aprobación.
+- `tasks.md` con T14–T19 (~2–3h) en rama `feat/spec-002-paquete-3-contratos-personales`: DTO `CortePersonal`, 3 endpoints, test de privacidad integral, limpieza frontend y regresión. Decisión registrada: detalle compartido pasa a DTO personal; admin conserva listado + reportes.
+- Revisión de cierre ejecutada: **APROBADO PAQUETE 3** sin correcciones (3 P2 informativos en `tasks.md`). No autoriza paquete 4 ni declara la spec implementada.
 
 ## Recuperación documental (2026-10-05)
 - Recuperado el contenido útil de `b211ee5` en una rama nueva desde `dev`, sin cherry-pick ni reescritura de la rama histórica `feat/mcp-config-y-offline`.
