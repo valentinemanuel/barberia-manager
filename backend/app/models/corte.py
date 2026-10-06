@@ -31,5 +31,7 @@ class Corte(Base):
     anulado_motivo = Column(String(255), nullable=True)
     anulado_por = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
 
-    barbero = relationship("Usuario", backref="cortes")
+    barbero = relationship(
+        "Usuario", backref="cortes", foreign_keys=[barbero_id]
+    )
     servicio = relationship("Servicio", backref="cortes")

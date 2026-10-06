@@ -1325,6 +1325,80 @@ def test_cobro_parcial_sin_importe_400(client):
     assert r.status_code == 400
 
 
+def _editar_corte(client, token, corte_id, body):
+    return client.patch(
+        f"/api/cortes/{corte_id}", json=body, headers={"Authorization": f"Bearer {token}"}
+    )
+
+
+def test_editar_metodo_conserva_importes(client):
+    """T43: solo método → mismos precio/porcentaje/reparto."""
+    corte_id = _corte_para_abonos(client, "barbero_t43")
+    token = _token_para(client, "barbero_t43")
+
+    respuesta = _editar_corte(client, token, corte_id, {"metodo_pago": "tarjeta"})
+    assert respuesta.status_code == 200
+    data = respuesta.json()
+    assert data["metodo_pago"] == "tarjeta"
+    assert data["precio"] == "100.00"
+    assert data["parte_barbero"] == "50.00"
+
+
+def test_editar_servicio_recalcula_valores_actuales(client):
+    """T43 (RF-42): cambio de servicio → precio/porcentaje/reparto actuales."""
+    from decimal import Decimal as DecimalT43
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t43b", Decimal("50"), Decimal("100.00"))
+    db.add(
+        Servicio(
+            nombre="Servicio T43B",
+            descripcion="Segundo servicio",
+            precio=DecimalT43("200.00"),
+            duracion_minutos=30,
+            activo=True,
+        )
+    )
+    db.commit()
+    servicio2 = db.query(Servicio).filter(Servicio.nombre == "Servicio T43B").first().id
+    db.close()
+
+    corte_id = None
+    db = TestingSessionLocal()
+    servicio1 = db.query(Servicio).filter(Servicio.nombre == "Servicio T7").first()
+    db.close()
+    token = _token_para(client, "barbero_t43b")
+    registro = client.post(
+        "/api/cortes/",
+        json={"servicio_id": servicio1.id, "metodo_pago": "efectivo"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    corte_id = registro.json()["id"]
+
+    respuesta = _editar_corte(client, token, corte_id, {"servicio_id": servicio2})
+    assert respuesta.status_code == 200
+    data = respuesta.json()
+    assert data["precio"] == "200.00"
+    assert data["parte_barbero"] == "100.00"
+
+
+def test_editar_ajeno_404_y_servicio_invalido(client):
+    """T43: ajeno → 404; servicio inexistente → 404."""
+    from app.models.usuario import Rol as RolModelo
+
+    corte_id = _corte_para_abonos(client, "barbero_t43c")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barbero_t43d", RolModelo.BARBERO)
+    db.close()
+
+    assert _editar_corte(
+        client, _token_para(client, "barbero_t43d"), corte_id, {"metodo_pago": "tarjeta"}
+    ).status_code == 404
+    assert _editar_corte(
+        client, _token_para(client, "barbero_t43c"), corte_id, {"servicio_id": 9999}
+    ).status_code == 404
+
+
 def test_abono_mayor_al_restante_400(client):
     """T39: exceso online se rechaza sin crear movimiento."""
     from app.models.finanzas_corte import MovimientoCorte

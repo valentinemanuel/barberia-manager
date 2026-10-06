@@ -566,7 +566,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-22–27, RF-42, RF-46 
   - Implementar: `anulado_en`/`anulado_motivo`/`anulado_por` nullable en `Corte` + revisión solo-aditiva con guard de existencia.
   - Hecho cuando: escenarios TEMP verificados y prohibido aplicar contra base real.
 
-- [ ] **T43. Edición propia no bloqueada.** RF-22/RF-42 (parciales).
+- [x] **T43. Edición propia no bloqueada.** RF-22/RF-42 (parciales).
   - Dependencias: T42 (modelo con columnas presentes aunque no usadas aún).
   - Tests primero: barbero cambia método → 200 con mismos importes; cambia servicio → 200 con precio/porcentaje/reparto actuales; ajeno → 404; servicio inexistente/inactivo → 404/400.
   - Implementar: `PATCH /cortes/{id}` con `CorteEditar`; recálculo vía valores actuales (reutilizar `calcular_partes` + validadores).
@@ -612,7 +612,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-22–27, RF-42, RF-46 
 | Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
 |---|---|---|---|
 | T42 | Rojo real: `history` mostraba solo hasta `003` (+ `String` sin importar que rompía el modelo) | Verde: `history` con `004`; TEMP vacía salta (sin tabla); legacy + `create_all` dispara guard; legacy vieja real (9 tablas, 1 fila) agrega las 3 columnas con FK nombrada preservando la fila; repetir no-op | Hallazgos honestos del camino: `String` faltante, `op.create_foreign_key` directo incompatible con SQLite, batch exige FK nombrada — todo verificado en TEMP. `barberia.db` hash estable (`4c7f1b19…`); prohibido aplicar contra base real. Modelo + revisión `004` (batch aditivo). |
-| T43 |  |  |  |
+| T43 | Rojo real: 3 failed (405 sin PATCH) + `AmbiguousForeignKeysError` por la nueva FK `anulado_por` | Verde: `84 passed` (3 archivos) | DB estable en baseline; `models/corte.py` (relationship con `foreign_keys`) + `edicion_corte_service.py` + `schemas/corte.py` (`CorteEditar`) + `routers/cortes.py` (PATCH) + `test_cortes.py`. Cambio: método conserva importes, servicio recalcula actuales; inexistente 404, inactivo 400, ajeno 404, sin cambios 400. |
 | T44 |  |  |  |
 | T45 |  |  |  |
 | T46 |  |  |  |

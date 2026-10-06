@@ -33,6 +33,13 @@ class CorteCrear(CorteBase):
     importe_cobro: Optional[Decimal] = None
 
 
+class CorteEditar(BaseModel):
+    """Edición parcial (paquete 7, RF-22/RF-42): servicio y/o método."""
+
+    servicio_id: Optional[int] = None
+    metodo_pago: Optional[MetodoPago] = None
+
+
 class CorteResponse(BaseModel):
     id: int
     barbero_id: int

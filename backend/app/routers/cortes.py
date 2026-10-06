@@ -11,10 +11,15 @@ from app.models.usuario import Usuario, Rol
 from app.schemas.corte import (
     CobroInicial,
     CorteCrear,
+    CorteEditar,
     CorteResponse,
     CortePersonal,
 )
 from app.services.corte_service import crear_corte
+from app.services.edicion_corte_service import (
+    NoEncontrado,
+    editar_corte as aplicar_edicion,
+)
 from app.services.movimiento_corte_service import registrar_abono
 from app.models.finanzas_corte import ConceptoMovimiento
 from app.services.operacion_corte_service import (
@@ -194,6 +199,39 @@ def registrar_corte(
         raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.patch("/{corte_id}", response_model=CortePersonal)
+def editar_corte_endpoint(
+    corte_id: int,
+    datos: CorteEditar,
+    db: Session = Depends(get_db),
+    actor: Usuario = Depends(obtener_usuario_actual),
+):
+    """Edita servicio y/o método de un corte propio no bloqueado (RF-22/42).
+
+    El bloqueo y la anulación se verifican en T44/T45; aquí titularidad y
+    recálculo. El admin opera sobre cualquier corte (gestión).
+    """
+    corte = db.query(Corte).filter(Corte.id == corte_id).first()
+    if not corte:
+        raise HTTPException(status_code=404, detail="Corte no encontrado")
+    if actor.rol != Rol.ADMIN and corte.barbero_id != actor.id:
+        raise HTTPException(status_code=404, detail="Corte no encontrado")
+    try:
+        corte = aplicar_edicion(
+            db,
+            corte=corte,
+            servicio_id=datos.servicio_id,
+            metodo=datos.metodo_pago,
+        )
+    except NoEncontrado as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    db.commit()
+    db.refresh(corte)
+    return corte
 
 
 @router.get("/mi/resumen/dia")
