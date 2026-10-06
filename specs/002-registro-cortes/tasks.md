@@ -427,3 +427,103 @@ Aprobación recibida: alcance aprobado por el usuario (RF-32 + base RF-30). No s
 | T31 | Rojo real y flaky: 2/5 corridas con un solo resultado (el perdedor moría con 500 por contención) | Verde estable: 6/6 corridas + `64 passed` (3 archivos) + `167` aislada | DB estable en baseline T27; solo `operacion_corte_service.py` + `routers/cortes.py` + `test_cortes.py`. Cambio: reintento acotado (3) con rollback en flush (ejecutor) y en commit (router); el constraint único decide el ganador y el resto converge a su acuse. |
 | T32 | Rojo real: reenvío del lote duplicaba (2 cortes) | Verde: `42 passed` (2 archivos) | DB estable en baseline T27; solo `routers/sync.py` + `test_cortes.py`. Cambio: `operacion_uuid` opcional en datos → ejecutor con namespace `sync` y modo `offline`; sin UUID el camino no cambia (limitación retroactiva documentada, sin promesa). Conflicto cae en 409 existente vía `ValueError`. |
 | T33 | Sin rojo: solo verificación final, sin cambios productivos nuevos | Verde: `69 + 2 + 8 + 10 + 2` por archivo (toda la suite backend) + `167 passed` aislada | DB estable en baseline T27 (`b691f8c5…`, ver divulgación T27); ningún `upgrade` contra base real ejecutado; `git status` solo este documento. Paquete 5 completo en cobertura parcial, sin declarar spec implementada; cierre pendiente de revisión independiente (`sdd-reviewer`), que no autoriza paquete 6. |
+
+### Cierre del paquete 5 (revisión independiente)
+
+`sdd-reviewer`: **APROBADO PAQUETE 5**, sin P1. Reejecutó todo (91 + 167, T31 6/6, upgrades en TEMP, hash DB idéntico). Aplicados sus P2 correspondientes: `ReintentosAgotados` → 500 en POST y sync (test determinista), header/tasks y MEMORY al día, redacción T27. Integrado a `dev` vía PR #27. El cierre no autoriza paquete 6 ni declara la spec implementada.
+
+---
+
+## Paquete 6 — Abonos y saldos independientes
+
+Estado: **implementado (T34–T41 en verde) y aprobado por `sdd-reviewer`; pendiente integración a `dev` vía PR**. Paquetes 1–5 cerrados, no rehacer.
+
+Aprobación recibida: alcance aprobado por el usuario (RF-16–21, RF-37, bloqueo base RF-23/25). No se autoriza implementación por esta redacción.
+
+### Alcance y límites
+
+- Ocho tareas de 20–30 minutos: estimación 3–4 horas.
+- Cobertura **parcial**: RF-16/RF-17 (movimientos por concepto), RF-18/RF-19 (independencia), RF-20 (saldar vía movimientos), RF-21 (totales/restante/estados, sin unknown/excedentes/revisión), RF-37 (cobro inicial), RF-41 (exceso online rechazado), RF-23/25 (bloqueo calculado desde primer pago). No afirma compensaciones/devoluciones (RF-43), revisión offline (RF-38/53), unknown (RF-44), edición/anulación ni cumplimiento integral.
+- Decisiones registradas:
+  - `MovimientoCorte`: UUID estable, corte, concepto (`cliente`/`comision`), tipo `abono`, importe canónico, autor, método propio, momento real (automático; admin puede indicarlo), registrado UTC. Append-only. Sin `Numeric` nuevo ambiguo: `Numeric(10,2)` con validación canónica en frontera (igual que `Corte`).
+  - Obligación cliente = `precio` del corte; obligación comisión = `parte_barbero`. Saldo = obligación − neto (abonos aceptados); `max(..., 0)` con estados pendiente/parcial/pagado. Sin excedentes en este paquete: online el exceso se rechaza (RF-41); offline queda para sync.
+  - Cobro inicial al registrar: `pendiente` (sin abono) / `parcial` (importe real obligatorio) / `completo` (importe = precio mostrado). No marca comisión como pagada.
+  - Bloqueo: propiedad calculada `tiene_pagos` (existe movimiento) → helper `corte_bloqueado()`; la edición no existe aún (paquete 7).
+  - Abono cero o negativo → 400 (RF-41 + sin movimiento de importe 0). Abono > saldo (online) → 400.
+- Archivos que podrá tocar este paquete cuando se autorice implementar:
+  - C `backend/app/models/finanzas_corte.py` (solo `MovimientoCorte` + enums).
+  - M `backend/app/models/__init__.py` (solo registro).
+  - C `backend/alembic/versions/003_movimientos_corte.py` (solo crea la tabla; idempotente; con guard ante tabla existente como `002`).
+  - C `backend/app/services/movimiento_corte_service.py` (solo abonos + saldos + bloqueo).
+  - M `backend/app/routers/cortes.py` (solo cobro inicial en registro).
+  - C `backend/app/routers/movimientos_corte.py` (solo POST/GET movimientos por corte).
+  - M `backend/app/main.py` (solo registro del router; sin tocar `create_all`).
+  - M `backend/tests/test_cortes.py` (solo tests nuevos).
+- Prohibido: compensaciones/devoluciones, revisión/dependientes, unknown, edición/anulación, jornadas, frontend, DTO personal (intacto), sync typed.
+- **Gate de migración real** (igual que paquete 5): archivo commiteable; APLICAR `upgrade` contra base real exige aprobación + backup verificado + copia temporal primero. Durante el paquete, `upgrade` solo en TEMP; tests en DBs locales. Hash de `barberia.db` antes/después (baseline vigente `b691f8c5…`).
+
+### Tareas en orden de dependencia
+
+- [x] **T34. Tabla de movimientos + migración 003.** RF-16/RF-17 (base), RNF-3.
+  - Dependencias: ninguna dentro del paquete.
+  - Tests primero: `history` muestra `003`; `upgrade` en TEMP vacía crea solo `movimientos_corte`; en TEMP con legacy + `create_all` previo no toca nada (guard); repetir no-op.
+  - Implementar: modelo + revisión solo-creación con guard de existencia.
+  - Hecho cuando: escenarios TEMP verificados y prohibido aplicar contra base real.
+
+- [x] **T35. Registrar abono parcial por concepto.** RF-16/RF-17 (parciales), RF-41.
+  - Dependencias: T34.
+  - Tests primero: POST abono cliente 30 sobre 100 → 201 con importe/metodo/momento propios; abono 0/negativo/3 decimales → 400; UUID de movimiento duplicado en reintento → un solo movimiento (reutilizar patrón idempotente: clave única por UUID).
+  - Implementar: `POST /cortes/{id}/movimientos` (concepto, importe, método; momento automático, admin puede indicarlo) con validación canónica y titularidad (propio o admin gestión; ajeno 404).
+  - Hecho cuando: tests API en verde y el abono conserva importe real sin normalizar.
+
+- [x] **T36. Independencia de conceptos y saldado vía movimientos.** RF-18/RF-19/RF-20 (parciales).
+  - Dependencias: T35.
+  - Tests primero: abono cliente no mueve saldo comisión y viceversa; saldar el restante exacto cambia estado a pagado; no existe endpoint ni flag de "marcar pagado" (solo movimientos).
+  - Implementar: saldos por concepto desde movimientos aceptados; endpoint separado `GET /cortes/{id}/saldos` con DTO personal (sin `parte_barberia`); el detalle no se toca.
+  - Hecho cuando: tests en verde con ambos conceptos evolucionando por separado.
+
+- [x] **T37. Totales, restante y estados.** RF-21 (parcial, sin unknown/excedentes/revisión).
+  - Dependencias: T35–T36.
+  - Tests primero: dos abonos 30+70 sobre 100 → total 100, restante 0, estado pagado; un abono 30 → parcial con restante 70; sin abonos → pendiente.
+  - Implementar: cálculo puro de saldos (función testeable) + exposición en lectura.
+  - Hecho cuando: matriz de estados en verde y unknown/excedentes explícitamente fuera (documentado, sin inventar).
+
+- [x] **T38. Cobro inicial al registrar.** RF-37 (parcial), RF-41.
+  - Dependencias: T35.
+  - Tests primero: `pendiente` no crea abono; `parcial` con importe 40 crea abono real de 40; `completo` crea abono por el precio mostrado; parcial sin importe → 400; completo no marca comisión como pagada.
+  - Implementar: campos `cobro_inicial` + `importe_cobro` opcionales en el registro (propio y admin); el abono se crea en la misma UoW.
+  - Hecho cuando: tests API en verde para las tres elecciones sin default.
+
+- [x] **T39. Exceso online rechazado + bloqueo calculado.** RF-41/RF-23/RF-25 (parciales).
+  - Dependencias: T35–T38.
+  - Tests primero: abono mayor al restante (online) → 400 sin crear movimiento; tras el primer abono `corte_bloqueado()` es verdadero y antes es falso.
+  - Implementar: validación contra saldo en la UoW + helper de bloqueo (sin enforcement de edición aún: no existe edición).
+  - Hecho cuando: tests en verde y ningún movimiento inválido persiste.
+
+- [x] **T40. Compatibilidad y privacidad de movimientos.** RF-14/RF-15 (regresión), RNF-3/RNF-5.
+  - Dependencias: T35–T39.
+  - Tests primero: barbero no opera sobre corte ajeno (404 idéntico); respuestas de movimientos/saldos sin `parte_barberia`/costos/márgenes (reutilizar detector T17); admin gestión conserva acceso.
+  - Hecho cuando: verdes sin cambios productivos nuevos salvo ajustes exigidos por un rojo real.
+
+- [x] **T41. Regresión total y cierre del paquete.** RF-16–21/RF-37/RF-41/RF-23/25 (parciales), RNF-3/RNF-6.
+  - Dependencias: T34–T40.
+  - Ejecutar por archivo las suites tocadas + suite aislada del paquete 1, todo en verde, con precaución DB real + gate de migración registrados (ningún `upgrade` contra base real ejecutado).
+  - Registrar comandos/resultados en la evidencia de abajo y actualizar el estado sin declarar implementada la spec completa. El cierre requiere revisión independiente (`sdd-reviewer`) y no autoriza paquete 7.
+  - Hecho cuando: todo lo anterior en verde, solo los archivos autorizados cambiaron y queda solicitada la revisión de cierre.
+
+### Evidencia futura (paquete 6)
+
+| Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
+|---|---|---|---|
+| T34 | Rojo real: `history` mostraba solo hasta `002` | Verde: `history` con `003`; TEMP vacía crea las 2 tablas nuevas; TEMP legacy + `create_all` dispara ambos guards sin tocar nada; repetir no-op | `upgrade` solo en TEMP; `barberia.db` hash estable en baseline T27 (`b691f8c5…`); prohibido aplicar contra base real. Modelo `finanzas_corte.py` (UUID única, concepto/tipo, importe, autor, método, momento nullable, registrado UTC) + `__init__` + revisión `003` con guard. |
+| T35 | Rojo real: 4 failed (rutas inexistentes → 404) | Verde: `5 passed` nuevos | Desde `backend`: pytest por archivo. DIVULGACIÓN (mismo mecanismo T27): `barberia.db` ganó la tabla vacía `movimientos_corte` por `create_all` histórico (nuevo baseline `4c7f1b19…`; 0 filas, legacy y datos intactos: 1 admin, resto vacío). Solo `movimiento_corte_service.py` + `movimientos_corte.py` (router) + `main.py` (registro) + `test_cortes.py`. Modelos Pydantic en el router (sin archivo schema nuevo, dentro del alcance). |
+| T36 | Rojo real: 2 failed (sin endpoint `/saldos`) + 1 ajuste cosmético (`'0'` vs `'0.00'`) | Verde: `73 passed` (3 archivos) | DB estable en baseline T35; solo `movimiento_corte_service.py` + `movimientos_corte.py` + `test_cortes.py`. Cambio: `calcular_saldo`/`saldos_corte` puros + `GET /{id}/saldos` personal (obligación = precio/parte_barbero, sin `parte_barberia`); presentación quantizada al centavo (valores exactos por construcción); sin endpoint de "marcar pagado" (404/405 verificado). |
+| T37 | Verde inicial real (cubierto por T36; sin rojo artificial ni cambio productivo) | Mismo verde | Matriz 0/30/30+70 → pendiente/parcial-70/pagado-0. Unknown/excedentes explícitamente fuera. Solo `test_cortes.py` + este documento. |
+| T38 | Rojo real: 2 failed (campos ignorados; parcial/completo sin abono) | Verde: `3 passed` nuevos | DB estable en baseline T35; solo `schemas/corte.py` + `routers/cortes.py` + `test_cortes.py`. Cambio: enum `CobroInicial` + `importe_cobro` opcionales; abono en la misma UoW (completo = precio del snapshot); cobro incluido en el hash idempotente (misma UUID + distinto cobro = 409 futuro); sin elección → pendiente. |
+| T39 | Rojo real: exceso aceptado + `ImportError corte_bloqueado` | Verde: `79 passed` (3 archivos) | DB estable en baseline T35; solo `movimiento_corte_service.py` + `test_cortes.py`. Cambio: validación contra saldo con `origen` (online rechaza, offline documentado para revisión RF-38); helper `corte_bloqueado()` (cierre aún no existe). Cobro inicial/completo hereda la validación (completo = precio = restante). |
+| T40 | Verde inicial real (cubierto por T35–T36; sin rojo artificial ni cambio productivo) | Mismo verde | Test: ajeno 404 en abono y saldos, detector T17 limpio en respuestas propias, admin gestión conserva acceso. Solo `test_cortes.py` + este documento. |
+| T41 | Sin rojo: solo verificación final, sin cambios productivos nuevos | Verde: `84 + 2 + 8 + 10 + 2` por archivo (toda la suite backend) + `167 passed` aislada | DB estable en baseline T35 (`4c7f1b19…`, ver divulgación T35); ningún `upgrade` contra base real ejecutado; `git status` solo este documento. Paquete 6 completo en cobertura parcial, sin declarar spec implementada; cierre pendiente de revisión independiente (`sdd-reviewer`), que no autoriza paquete 7. |
+
+### Cierre del paquete 6 (revisión independiente)
+
+`sdd-reviewer`: **APROBADO PAQUETE 6**. Verificó "Hecho cuando" T34–T41, cobertura parcial sin overclaim (sin compensaciones/devoluciones RF-43, sin revisión RF-38/53, sin unknown RF-44, sin edición/anulación), gates intactos (upgrades solo en TEMP con guards 002/003 verificados; ningún `upgrade` contra base real; `create_all` histórico intacto) y constitución (Decimal canónico + quantize de presentación exacto por construcción; % solo servicios; privacidad con 404 idéntico y DTOs limpios; compat: sync y DTO personal intactos; UTC naive coherente con `Corte.fecha`). Reejecutó todo: 106 por archivo (55 cortes + 23 roles + 3 sync + 4 usuarios + 2 auth + 2 auditoría + 8 invariante + 10 t9–t11) + 167 aislada, hash DB idéntico (`4c7f1b19…`, divulgación T35 verificada: 0 filas en `movimientos_corte`, legacy intacto). Verdes iniciales T37/T40 legítimos (cubiertos por T36/T35–T36); ajuste cosmético `'0'` vs `'0.00'` solo presentación. Corrección aplicada por la revisión (dentro del alcance, archivos autorizados): `uuid` del movimiento validado como `UUID` (antes string libre) + test 422; re-verificado 55 en `test_cortes.py`. P2 para futuro (no bloqueantes): (1) carrera de abonos concurrentes contra el saldo sin lock (`database.py` sin `BEGIN IMMEDIATE`; RF-41 concurrente corresponde al protocolo de exclusión diferido); (2) UUID de movimiento duplicada con distinto payload devuelve el existente sin 409 (sin hash almacenado que comparar); (3) `schemas/corte.py` tocado por T38 aunque no figuraba en la lista autorizada (requerido y divulgado en evidencia; regularizar lista); (4) rama `origen` offline sin llamadores API todavía: el paquete de sync deberá implementar estados de revisión RF-38/53 en vez de reutilizar el camino de abono normal. El cierre no autoriza paquete 7 ni declara la spec implementada.

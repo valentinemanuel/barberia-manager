@@ -3,6 +3,7 @@ from decimal import Decimal
 from pydantic import BaseModel, Field
 from typing import Optional
 from uuid import UUID
+import enum
 
 from app.models.corte import MetodoPago
 
@@ -12,6 +13,14 @@ class CorteBase(BaseModel):
     metodo_pago: MetodoPago = MetodoPago.EFECTIVO
 
 
+class CobroInicial(str, enum.Enum):
+    """Elección de cobro del cliente al registrar (RF-37, sin default)."""
+
+    PENDIENTE = "pendiente"
+    PARCIAL = "parcial"
+    COMPLETO = "completo"
+
+
 class CorteCrear(CorteBase):
     # Solo admin: barbero destinatario. Si lo envía un barbero → 403.
     barbero_id: Optional[int] = None
@@ -19,6 +28,9 @@ class CorteCrear(CorteBase):
     momento_real: Optional[datetime] = None
     # Idempotencia opcional (paquete 5): sin UUID → camino legacy intacto.
     operacion_uuid: Optional[UUID] = None
+    # Cobro inicial del cliente (paquete 6, RF-37): sin elección → pendiente.
+    cobro_inicial: Optional[CobroInicial] = None
+    importe_cobro: Optional[Decimal] = None
 
 
 class CorteResponse(BaseModel):
