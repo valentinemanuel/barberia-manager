@@ -1399,6 +1399,36 @@ def test_editar_ajeno_404_y_servicio_invalido(client):
     ).status_code == 404
 
 
+def test_editar_bloqueado_409_y_abono_sigue_201(client):
+    """T44 (RF-23/25): con pagos, el barbero no edita (409) pero sí abona."""
+    corte_id = _corte_para_abonos(client, "barbero_t44")
+    token = _token_para(client, "barbero_t44")
+
+    assert _abonar(client, token, corte_id, "cliente", 10).status_code == 201
+    respuesta = _editar_corte(client, token, corte_id, {"metodo_pago": "tarjeta"})
+    assert respuesta.status_code == 409
+    assert "bloqueado" in respuesta.json()["detail"].lower()
+    assert _abonar(client, token, corte_id, "cliente", 10).status_code == 201
+
+
+def test_admin_edita_bloqueado_200(client):
+    """T44: el admin gestiona bloqueados (enforcement solo barbero)."""
+    from app.models.usuario import Rol as RolModelo
+
+    corte_id = _corte_para_abonos(client, "barbero_t44b")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t44", RolModelo.ADMIN)
+    db.close()
+
+    assert _abonar(
+        client, _token_para(client, "barbero_t44b"), corte_id, "cliente", 10
+    ).status_code == 201
+    respuesta = _editar_corte(
+        client, _token_para(client, "admin_t44"), corte_id, {"metodo_pago": "tarjeta"}
+    )
+    assert respuesta.status_code == 200
+
+
 def test_abono_mayor_al_restante_400(client):
     """T39: exceso online se rechaza sin crear movimiento."""
     from app.models.finanzas_corte import MovimientoCorte

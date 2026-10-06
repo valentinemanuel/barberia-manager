@@ -572,7 +572,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-22–27, RF-42, RF-46 
   - Implementar: `PATCH /cortes/{id}` con `CorteEditar`; recálculo vía valores actuales (reutilizar `calcular_partes` + validadores).
   - Hecho cuando: tests API en verde y el registro original conserva trazabilidad (sin UPDATE destructivo de snapshots previos: se sobrescribe el vigente, historial de cambios para paquete de auditoría).
 
-- [ ] **T44. Bloqueo efectivo del barbero.** RF-23/RF-25 (parciales).
+- [x] **T44. Bloqueo efectivo del barbero.** RF-23/RF-25 (parciales).
   - Dependencias: T43 + helper `corte_bloqueado()` (T39).
   - Tests primero: tras un abono, PATCH y POST anular del barbero → 409 `corte_bloqueado`; registrar otro abono sigue 201 (RF-25).
   - Implementar: enforcement con `corte_bloqueado()` en ambas rutas (solo barbero; admin sigue gestión).
@@ -613,7 +613,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-22–27, RF-42, RF-46 
 |---|---|---|---|
 | T42 | Rojo real: `history` mostraba solo hasta `003` (+ `String` sin importar que rompía el modelo) | Verde: `history` con `004`; TEMP vacía salta (sin tabla); legacy + `create_all` dispara guard; legacy vieja real (9 tablas, 1 fila) agrega las 3 columnas con FK nombrada preservando la fila; repetir no-op | Hallazgos honestos del camino: `String` faltante, `op.create_foreign_key` directo incompatible con SQLite, batch exige FK nombrada — todo verificado en TEMP. `barberia.db` hash estable (`4c7f1b19…`); prohibido aplicar contra base real. Modelo + revisión `004` (batch aditivo). |
 | T43 | Rojo real: 3 failed (405 sin PATCH) + `AmbiguousForeignKeysError` por la nueva FK `anulado_por` | Verde: `84 passed` (3 archivos) | DB estable en baseline; `models/corte.py` (relationship con `foreign_keys`) + `edicion_corte_service.py` + `schemas/corte.py` (`CorteEditar`) + `routers/cortes.py` (PATCH) + `test_cortes.py`. Cambio: método conserva importes, servicio recalcula actuales; inexistente 404, inactivo 400, ajeno 404, sin cambios 400. |
-| T44 |  |  |  |
+| T44 | Rojo real: barbero editaba bloqueado (200 en vez de 409) | Verde: `63 passed` (2 archivos) | DB estable; solo `routers/cortes.py` + `test_cortes.py`. Cambio: enforcement con `corte_bloqueado()` en PATCH (solo barbero; admin 200); abono posterior sigue 201 (RF-25). Nota honesta: el 409 de POST anular va en T45 (la ruta aún no existe). |
 | T45 |  |  |  |
 | T46 |  |  |  |
 | T47 |  |  |  |

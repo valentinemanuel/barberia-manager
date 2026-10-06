@@ -20,6 +20,7 @@ from app.services.edicion_corte_service import (
     NoEncontrado,
     editar_corte as aplicar_edicion,
 )
+from app.services.movimiento_corte_service import corte_bloqueado
 from app.services.movimiento_corte_service import registrar_abono
 from app.models.finanzas_corte import ConceptoMovimiento
 from app.services.operacion_corte_service import (
@@ -218,6 +219,10 @@ def editar_corte_endpoint(
         raise HTTPException(status_code=404, detail="Corte no encontrado")
     if actor.rol != Rol.ADMIN and corte.barbero_id != actor.id:
         raise HTTPException(status_code=404, detail="Corte no encontrado")
+    if actor.rol != Rol.ADMIN and corte_bloqueado(db, corte):
+        raise HTTPException(
+            status_code=409, detail="Corte bloqueado: tiene pagos registrados"
+        )
     try:
         corte = aplicar_edicion(
             db,
