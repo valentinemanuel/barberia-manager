@@ -505,7 +505,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-16–21, RF-37, bloque
   - Tests primero: barbero no opera sobre corte ajeno (404 idéntico); respuestas de movimientos/saldos sin `parte_barberia`/costos/márgenes (reutilizar detector T17); admin gestión conserva acceso.
   - Hecho cuando: verdes sin cambios productivos nuevos salvo ajustes exigidos por un rojo real.
 
-- [ ] **T41. Regresión total y cierre del paquete.** RF-16–21/RF-37/RF-41/RF-23/25 (parciales), RNF-3/RNF-6.
+- [x] **T41. Regresión total y cierre del paquete.** RF-16–21/RF-37/RF-41/RF-23/25 (parciales), RNF-3/RNF-6.
   - Dependencias: T34–T40.
   - Ejecutar por archivo las suites tocadas + suite aislada del paquete 1, todo en verde, con precaución DB real + gate de migración registrados (ningún `upgrade` contra base real ejecutado).
   - Registrar comandos/resultados en la evidencia de abajo y actualizar el estado sin declarar implementada la spec completa. El cierre requiere revisión independiente (`sdd-reviewer`) y no autoriza paquete 7.
@@ -522,4 +522,4 @@ Aprobación recibida: alcance aprobado por el usuario (RF-16–21, RF-37, bloque
 | T38 | Rojo real: 2 failed (campos ignorados; parcial/completo sin abono) | Verde: `3 passed` nuevos | DB estable en baseline T35; solo `schemas/corte.py` + `routers/cortes.py` + `test_cortes.py`. Cambio: enum `CobroInicial` + `importe_cobro` opcionales; abono en la misma UoW (completo = precio del snapshot); cobro incluido en el hash idempotente (misma UUID + distinto cobro = 409 futuro); sin elección → pendiente. |
 | T39 | Rojo real: exceso aceptado + `ImportError corte_bloqueado` | Verde: `79 passed` (3 archivos) | DB estable en baseline T35; solo `movimiento_corte_service.py` + `test_cortes.py`. Cambio: validación contra saldo con `origen` (online rechaza, offline documentado para revisión RF-38); helper `corte_bloqueado()` (cierre aún no existe). Cobro inicial/completo hereda la validación (completo = precio = restante). |
 | T40 | Verde inicial real (cubierto por T35–T36; sin rojo artificial ni cambio productivo) | Mismo verde | Test: ajeno 404 en abono y saldos, detector T17 limpio en respuestas propias, admin gestión conserva acceso. Solo `test_cortes.py` + este documento. |
-| T41 |  |  |  |
+| T41 | Sin rojo: solo verificación final, sin cambios productivos nuevos | Verde: `84 + 2 + 8 + 10 + 2` por archivo (toda la suite backend) + `167 passed` aislada | DB estable en baseline T35 (`4c7f1b19…`, ver divulgación T35); ningún `upgrade` contra base real ejecutado; `git status` solo este documento. Paquete 6 completo en cobertura parcial, sin declarar spec implementada; cierre pendiente de revisión independiente (`sdd-reviewer`), que no autoriza paquete 7. |
