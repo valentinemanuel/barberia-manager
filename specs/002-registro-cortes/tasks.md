@@ -259,6 +259,77 @@ Decisión del gate registrada: se crea el DTO personal `CortePersonal` (= `Corte
 | T18 | Rojo: grep hallaba `parte_barberia` en `db.ts` y `RegistroCortes.tsx` (código de barbero) | Verde: `npm run build` (tsc + vite) OK; grep limpio en código de barbero | Retirados cálculo offline y campo `CorteLocal`; tipo de admin intacto; filas Dexie viejas con el campo se ignoran sin migrar (propiedad extra tolerada). Solo `db.ts` + `RegistroCortes.tsx` + este documento. |
 | T19 | Sin rojo: solo verificación final, sin cambios productivos nuevos | Verde: `49 + 2 + 8 + 10 + 2` por archivo (toda la suite backend) + `167 passed` aislada + `npm run build` OK | `barberia.db` hash idéntico (`3fe8caa6…f924a9`); `git status` solo este documento. Paquete 3 completo en cobertura parcial, sin declarar spec implementada; cierre pendiente de revisión independiente (`sdd-reviewer`), que no autoriza paquete 4. |
 
+---
+
+## Paquete 4 — Registro online: destino y momento real
+
+Estado: **tareas redactadas, pendientes de aprobación para implementar**. Paquetes 1–3 cerrados, no rehacer.
+
+Aprobación recibida: alcance aprobado por el usuario (RF-1/RF-2/RF-8/RF-10 online). No se autoriza implementación por esta redacción.
+
+### Alcance y límites
+
+- Seis tareas de 20–30 minutos: estimación 2–3 horas.
+- Cobertura **parcial**: RF-1 (registro propio con servicio/método), RF-2 (destino admin), RF-8 (momento automático barbero), RF-10 (retroactivo admin con valores actuales), RF-56 (destino inactivo permitido si existe con porcentaje). No afirma offline/sync, momentos al sincronizar (RF-9), comisión estimada (RF-7), ni cumplimiento integral.
+- Decisiones registradas:
+  - `barbero_id` opcional en el body, **solo admin**; si lo envía un barbero → 403 (no silencioso). Destino inexistente → 404. Destino inactivo permitido si existe con porcentaje (RF-56); sin porcentaje recuperable → 400.
+  - `momento_real` opcional, **solo admin**; pasado sin límite, futuro → 400. Si lo envía un barbero → 400 (RF-8: sin fecha manual). Nunca precio/porcentaje manual en este flujo (fuera de alcance de la spec).
+  - El momento se guarda en `Corte.fecha` (UTC naive, contrato existente; RNF-2 pleno con zona/jornadas corresponde a paquete de jornadas).
+- Archivos que podrá tocar este paquete cuando se autorice implementar:
+  - M `backend/app/schemas/corte.py` (solo campos `barbero_id`/`momento_real` opcionales en `CorteCrear`).
+  - M `backend/app/services/corte_service.py` (solo destino + momento en `crear_corte`).
+  - M `backend/app/routers/cortes.py` (solo autorización destino/momento en `registrar_corte`).
+  - M `backend/tests/test_cortes.py` (solo tests nuevos).
+- Prohibido: DTOs de respuesta, endpoints admin existentes, sync, frontend, modelos nuevos, migraciones, `create_all`.
+- Precaución DB real vigente: hash de `backend/barberia.db` antes/después, pytest solo por archivo, prohibido `pytest tests/` global.
+
+### Tareas en orden de dependencia
+
+- [ ] **T20. Destino admin en el registro.** RF-1/RF-2 (parciales), RF-56 (parcial).
+  - Dependencias: ninguna dentro del paquete.
+  - Tests primero: admin registra con `barbero_id` de otro → 201 asociado al destino con su porcentaje; `barbero_id` inexistente → 404; barbero que envía `barbero_id` (incluso propio) → 403; destino inactivo con porcentaje → 201.
+  - Implementar: `barbero_id: Optional[int]` en `CorteCrear`; `crear_corte` resuelve destinatario (propio por defecto); router exige rol admin si viene destino.
+  - Hecho cuando: tests API en verde y el registro propio del barbero no cambia de comportamiento.
+
+- [ ] **T21. Momento retroactivo solo admin.** RF-8/RF-10 (parciales).
+  - Dependencias: T20 (mismo flujo de registro).
+  - Tests primero: admin registra con `momento_real` pasado → 201 con esa `fecha`; futuro → 400; barbero que envía `momento_real` → 400; sin momento → `fecha` automática (≈ ahora UTC).
+  - Implementar: `momento_real: Optional[datetime]` en `CorteCrear`; validación pasado/futuro; el servicio usa el momento o el automático.
+  - Hecho cuando: tests API en verde, sin precio/porcentaje manual en ningún caso.
+
+- [ ] **T22. Snapshot con valores actuales del destinatario.** RF-5 (parcial), RF-6.
+  - Dependencias: T20–T21.
+  - Tests primero: admin registra retroactivo para barbero con % distinto → reparto con el porcentaje **actual del destinatario**, no del admin; cambio posterior de catálogo/porcentaje no altera el corte (ya probado en T11, regresión).
+  - Implementar: verificar que el reparto usa precio actual del servicio + porcentaje actual del destinatario (el código ya lo hace; ajustar solo si un test revela lo contrario, sin rojo artificial).
+  - Hecho cuando: tests verdes que fijan destinatario-valores-actuales para propio, admin-propio y admin-tercero.
+
+- [ ] **T23. Errores exactos y sin filtraciones.** RF-14 (regresión), RNF-5.
+  - Dependencias: T20–T21.
+  - Tests primero: destino inexistente → 404 idéntico a corte inexistente (sin revelar existencia); `barbero_id` de barbero por barbero → 403; `momento_real` futuro por admin → 400 con mensaje en español; cuerpo con tipos inválidos → 422.
+  - Hecho cuando: cada rechazo con su código exacto y sin datos ajenos en mensajes.
+
+- [ ] **T24. Regresión de contratos personales.** RF-11/RF-15 (regresión).
+  - Dependencias: T20–T23.
+  - Tests: historial/detalle/registro con destino y momento responden sin `parte_barberia` (reutilizar detector T17); listado global admin intacto con contrato completo.
+  - Hecho cuando: verdes sin cambios productivos nuevos salvo ajustes exigidos por un rojo real.
+
+- [ ] **T25. Regresión total y cierre del paquete.** RF-1/RF-2/RF-8/RF-10/RF-56 (parciales), RNF-3/RNF-6.
+  - Dependencias: T20–T24.
+  - Ejecutar por archivo las suites tocadas + suite aislada del paquete 1, todo en verde, con precaución DB real registrada.
+  - Registrar comandos/resultados en la evidencia de abajo y actualizar el estado sin declarar implementada la spec completa. El cierre requiere revisión independiente (`sdd-reviewer`) y no autoriza paquete 5.
+  - Hecho cuando: todo lo anterior en verde, solo los archivos autorizados cambiaron y queda solicitada la revisión de cierre.
+
+### Evidencia futura (paquete 4)
+
+| Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
+|---|---|---|---|
+| T20 |  |  |  |
+| T21 |  |  |  |
+| T22 |  |  |  |
+| T23 |  |  |  |
+| T24 |  |  |  |
+| T25 |  |  |  |
+
 ### Cierre del paquete 3 (revisión independiente)
 
 `sdd-reviewer`: **APROBADO PAQUETE 3**, sin correcciones (ningún P1; no tocó archivos). Verificó "Hecho cuando" T14–T19, cobertura parcial sin overclaim, gate §11.2 cerrado respetando la decisión registrada (detalle compartido a DTO personal; admin conserva listado + reportes; sin versionado por no haber consumidores externos), constitución (Decimal, % solo servicios, privacidad, compat admin) y legitimidad de la migración de assertions viejas (resto exacto en fila DB + suite aislada). Reejecutó: `test_cortes.py` 19 passed, resto 30 passed, aislada 167 passed, `npm run build` OK, hash DB idéntico. P2 informativos para futuro: T17 no asserts explícitos de totales globales; `Math.round` float preexistente en estimada offline (`RegistroCortes.tsx:81`, corresponde a paquete frontend); P2 del paquete 2 vigentes. El cierre no autoriza paquete 4 ni declara la spec implementada.
