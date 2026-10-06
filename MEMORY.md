@@ -113,6 +113,11 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 - Alcance del paquete 2 aprobado y `tasks.md` redactado (T7–T13, ~3h) en rama `feat/spec-002-paquete-2-fundaciones`: conectar `dinero_cortes` al registro, validación canónica, UoW única (commitean routers), validador en schema usuario, snapshot aplicado, esqueleto Alembic solo-inspección y regresión Decimal exacta. Excluye DTO personal (gate `parte_barberia`), `create_all`, sync, frontend y movimientos.
 - Implementación T7–T13 completada (7 commits, pusheados a la misma rama): reparto puro conectado (fix real HALF_UP `0.02`→`0.03`), rechazo de precisión excesiva/no-Decimal con 400, UoW única, validador en schemas usuario, snapshot probado inmutable, Alembic solo-inspección y regresión exacta (36+4+167 verdes). `barberia.db` intacta en toda la secuencia (mismo hash). Hallazgo: el ORM oculta excesos de precisión al leer (raw 10.005 → `10.01`); resuelto con T8-bis (validador en `schemas/servicio.py`, decisión delegada por el usuario). Revisión de cierre ejecutada: **APROBADO PAQUETE 2** sin bloqueantes (4 P2 menores en `tasks.md`); no autoriza paquete 3 ni declara la spec implementada.
 
+## Spec 002 — paquete 3 redactado (2026-10-06)
+- Gate §11.2 (`parte_barberia` en DTO personal): el usuario rechaza documentar excepción y aprueba corregir ahora. Verificado: reportes solo admin, 3 endpoints personales afectados, frontend sin display en vistas barbero, sin consumidores externos.
+- `tasks.md` con T14–T19 (~2–3h) en rama `feat/spec-002-paquete-3-contratos-personales`: DTO `CortePersonal`, 3 endpoints, test de privacidad integral, limpieza frontend y regresión. Decisión registrada: detalle compartido pasa a DTO personal; admin conserva listado + reportes.
+- Revisión de cierre ejecutada: **APROBADO PAQUETE 3** sin correcciones (3 P2 informativos en `tasks.md`). No autoriza paquete 4 ni declara la spec implementada.
+
 ## Recuperación documental (2026-10-05)
 - Recuperado el contenido útil de `b211ee5` en una rama nueva desde `dev`, sin cherry-pick ni reescritura de la rama histórica `feat/mcp-config-y-offline`.
 - Conservados el estado y los pendientes actuales; no se recupera la afirmación antigua de que todos los tests están completos.
