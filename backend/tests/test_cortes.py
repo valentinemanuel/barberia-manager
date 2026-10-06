@@ -1544,6 +1544,38 @@ def test_sin_abonos_al_anulado_y_movimientos_conservados(client):
     assert saldos["cliente"]["abonado"] == "30.00"
 
 
+def test_edicion_anulacion_respetan_privacidad(client):
+    """T48: ajeno → 404; respuestas sin datos del negocio; admin y listado OK."""
+    from app.models.usuario import Rol as RolModelo
+
+    corte_id = _corte_para_abonos(client, "barbero_t48")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barbero_t48b", RolModelo.BARBERO)
+    _crear_usuario(db, "admin_t48", RolModelo.ADMIN)
+    db.close()
+    token_ajeno = _token_para(client, "barbero_t48b")
+    token_admin = _token_para(client, "admin_t48")
+
+    assert _editar_corte(client, token_ajeno, corte_id, {"metodo_pago": "tarjeta"}).status_code == 404
+    assert _anular_corte(client, token_ajeno, corte_id).status_code == 404
+
+    r = _editar_corte(
+        client, _token_para(client, "barbero_t48"), corte_id, {"metodo_pago": "tarjeta"}
+    )
+    assert r.status_code == 200
+    assert _sin_campos_prohibidos(r.json()) == []
+
+    r = _anular_corte(client, token_admin, corte_id, motivo="auditoría")
+    assert r.status_code == 200
+    assert _sin_campos_prohibidos(r.json()) == []
+
+    listado = client.get(
+        "/api/cortes/", headers={"Authorization": f"Bearer {token_admin}"}
+    )
+    assert listado.status_code == 200
+    assert listado.json()[0]["parte_barberia"] == "50.00"
+
+
 def test_abono_mayor_al_restante_400(client):
     """T39: exceso online se rechaza sin crear movimiento."""
     from app.models.finanzas_corte import MovimientoCorte

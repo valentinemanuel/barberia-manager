@@ -596,7 +596,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-22–27, RF-42, RF-46 
   - Implementar: filtro `anulado_en IS NULL` en reportes de devengado (cambio mínimo) + rechazo de abonos al anulado en `registrar_abono` o router (decidir el punto exacto sin romper sync: sync legacy sin abonos no afectado).
   - Hecho cuando: tests en verde y el dinero ya abonado se conserva intacto.
 
-- [ ] **T48. Privacidad y compat de edición/anulación.** RF-14/RF-15 (regresión), RNF-3/RNF-5.
+- [x] **T48. Privacidad y compat de edición/anulación.** RF-14/RF-15 (regresión), RNF-3/RNF-5.
   - Dependencias: T43–T47.
   - Tests primero: barbero no edita/anula ajeno (404 idéntico); respuestas sin `parte_barberia`/costos (detector T17); admin gestión conserva acceso; listado global intacto.
   - Hecho cuando: verdes sin cambios productivos nuevos salvo ajustes exigidos por un rojo real.
@@ -617,5 +617,5 @@ Aprobación recibida: alcance aprobado por el usuario (RF-22–27, RF-42, RF-46 
 | T45 | Rojo real: doble 404 (sin ruta anular) | Verde: `88 passed` (3 archivos) | DB estable; `edicion_corte_service.py` (`anular_corte`) + `schemas/corte.py` (`CorteAnular`, marca en ambos DTOs) + `routers/cortes.py` (POST anular + check en PATCH) + `test_cortes.py`. Cambio: barbero anula propio no bloqueado; bloqueado → 409 (cierra split T44); anulado → 409 siempre (sin reactivación); marca visible en historial. |
 | T46 | Rojo real: admin editaba bloqueado sin motivo (200 en vez de 400) | Verde: `66 passed` (2 archivos) | DB estable; `schemas/corte.py` (`motivo` en `CorteEditar`) + `routers/cortes.py` + `test_cortes.py`. Cambio: motivo obligatorio admin en bloqueado (edición y anulación); anulación lo persiste (autor/momento/motivo), edición lo exige sin journal (auditoría futura). Migración honesta: test T44 actualizado al contrato nuevo. |
 | T47 | Rojo real: doble (anulado contado en dashboard; abono al anulado 201) | Verde: `91 passed` (3 archivos) | DB estable; `reportes.py` (6 filtros `anulado_en IS NULL`: conteos, top, día, ganancias) + `movimientos_corte.py` (409 al anulado) + `test_cortes.py`. Cambio mínimo sin reinterpretar cierres legacy. Dinero abonado conservado y consultable. |
-| T48 |  |  |  |
+| T48 | Verde inicial real (cubierto por T43–T47; sin rojo artificial ni cambio productivo) | Mismo verde | Test: ajeno 404 en PATCH y anular, detector limpio en respuestas propias, admin anula con motivo, listado global intacto con contrato completo. Solo `test_cortes.py` + este documento. |
 | T49 |  |  |  |
