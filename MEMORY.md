@@ -108,6 +108,10 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 - Cierre limitado al paquete de dos archivos; la aplicación todavía no usa esas funciones. No constituye validación integral de 57 RF/6 RNF ni autoriza paquete 2, API, DB, migraciones o frontend. Próximo paso: proponer el siguiente paquete solo si el usuario lo aprueba.
 - Git flow: ramas de trabajo desde `dev` → PR a `dev`; `dev` → `main` por release
 
+## Spec 002 — paquete 2 redactado (2026-10-06)
+- Simplificación aprobada por el usuario: sin bóveda cifrada (stores por cuenta + wipe), sin barrera global de locks (UoW monoescritor `BEGIN IMMEDIATE`, protocolo completo diferido a PostgreSQL), sin escritura dual (centavos INTEGER solo en tablas nuevas, legacy congelado), pull por cursor+revisión sin manifests, LWW con marcadores por unidad en vez de tablas de candidatos, sin React Query y Vitest mínimo.
+- Alcance del paquete 2 aprobado y `tasks.md` redactado (T7–T13, ~3h) en rama `feat/spec-002-paquete-2-fundaciones`: conectar `dinero_cortes` al registro, validación canónica, UoW única (commitean routers), validador en schema usuario, snapshot aplicado, esqueleto Alembic solo-inspección y regresión Decimal exacta. Excluye DTO personal (gate `parte_barberia`), `create_all`, sync, frontend y movimientos. Implementación pendiente de aprobación.
+
 ## Recuperación documental (2026-10-05)
 - Recuperado el contenido útil de `b211ee5` en una rama nueva desde `dev`, sin cherry-pick ni reescritura de la rama histórica `feat/mcp-config-y-offline`.
 - Conservados el estado y los pendientes actuales; no se recupera la afirmación antigua de que todos los tests están completos.

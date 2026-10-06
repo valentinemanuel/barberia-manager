@@ -89,3 +89,89 @@ Revisión de cierre independiente por `sdd-reviewer`: **APROBADO PAQUETE 1**, si
 Completar este paquete aporta funciones puras comprobadas, **no** registro de cortes mejorado, pagos, API, offline, migración ni sincronización. Mantener el contrato global de 57 RF/6 RNF como pendiente de implementación integral. La siguiente división se propone después de medir este paquete y necesita aprobación; no añadir tareas posteriores por iniciativa del implementador.
 
 Cierre T6: paquete monetario en verde, con cobertura parcial RF-3/RF-4/RF-41/RNF-1 y verificación RNF-6; no se declara implementada la spec completa. Se solicita al coordinador la validación independiente con reviewer y la decisión del usuario sobre el siguiente paso. Ejecución detenida, sin redactar ni implementar paquetes adicionales.
+
+---
+
+## Paquete 2 — Fundaciones de registro (dinero conectado + UoW única)
+
+Estado: **tareas redactadas, pendientes de aprobación para implementar**. Paquete 1 (T1–T6) cerrado, no rehacer.
+
+Aprobación recibida: revisión de simplificación aprobada por el usuario y alcance del paquete 2 aprobado para redactar tareas. No se autoriza implementación por esta redacción.
+
+### Alcance y límites
+
+- Siete tareas de 20–30 minutos: estimación 3–4 horas. Si una tarea excede, reducir/reproponer antes de continuar.
+- Cobertura **parcial**: RF-3/RF-4/RF-5 (registro con dinero exacto y snapshot aplicado), RF-41 (validación de entrada de precio/porcentaje), RF-32 (una sola escritura por operación), RNF-1 (redondeo real) y RNF-3 (compatibilidad legacy + esqueleto Alembic). No afirma movimientos, saldos, edición/anulación, sync/offline ni cumplimiento integral.
+- Archivos que podrá tocar este paquete cuando se autorice implementar:
+  - M `backend/app/services/corte_service.py`.
+  - M `backend/app/routers/cortes.py` (solo commit de la UoW en registro).
+  - M `backend/app/routers/sync.py` (solo commit de la UoW en `crear_corte`; hoy persiste gracias al commit interno del servicio).
+  - M `backend/app/schemas/usuario.py` (solo validador de porcentaje).
+  - C `backend/alembic.ini`, C `backend/alembic/env.py`, C `backend/alembic/script.py.mako`, C `backend/alembic/versions/001_base_legacy.py` (base solo-inspección, sin secretos ni URL real).
+  - M `backend/tests/test_cortes.py` (solo assertions a Decimal exacto, sin cambiar fixtures).
+- Prohibido en este paquete: modificar `dinero_cortes.py` y su test (cerrados, solo reutilizar); tocar el DTO personal `CorteResponse` (gate `parte_barberia`/privacidad de plan §11.2, detenido hasta aclaración); tocar `create_all`/`main.py`/`database.py` (gate 9, suite actual dependiente); frontend, movimientos, cierres, outbox, cifrado, barrera global y escritura dual.
+- Colisión de nombres conocida: `corte_service.calcular_partes` (redondeo del contexto, ambas partes quantizadas) vs `dinero_cortes.calcular_partes` (contrato del paquete 1). T7 la resuelve importando el puro y eliminando el duplicado.
+- Precaución DB real: `app/main.py:22` ejecuta `create_all` sobre `backend/barberia.db` al importar, y los tests por archivo importan la app. Antes de cada ejecución registrar hash/tamaño de `backend/barberia.db`; al terminar verificar que no cambió su contenido (solo `create_all` idempotente sobre tablas existentes) y que `git status` no muestra más que los archivos autorizados (`*.db` está ignorado). Prohibido `pytest tests/` global y prohibido cualquier `upgrade` Alembic contra base real.
+
+Comandos desde `backend` en bash:
+
+```bash
+# Regresión del paquete 1 (aislado, sin app ni DB)
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=. PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 PYTEST_ADDOPTS='' PYTEST_PLUGINS='' python -m pytest --confcutdir=tests --noconftest -p no:cacheprovider -o addopts= tests/test_dinero_cortes_aislado.py -q
+# Tests por archivo del paquete 2 (importan la app; ver precaución DB real arriba)
+python -m pytest tests/test_cortes.py -q
+python -m pytest tests/test_sync_roles.py tests/test_roles_permisos.py -q
+```
+
+### Tareas en orden de dependencia
+
+- [ ] **T7. Conectar el reparto puro al registro y eliminar el duplicado.** RF-3/RF-4 (parciales), RNF-1.
+  - Dependencias: ninguna dentro del paquete; reutiliza `dinero_cortes` cerrado sin modificarlo.
+  - Tests primero: POST `/cortes/` con servicio 100.00 y barbero 50% responde `"50.00"`/`"50.00"` exactos; caso servicio 0.05 al 50% → `0.03`/`0.02` (ROUND_HALF_UP y resto exacto, no HALF_EVEN ni doble quantize).
+  - Implementar: `crear_corte` usa `dinero_cortes.calcular_partes`; eliminar el `calcular_partes` local de `corte_service.py`.
+  - Hecho cuando: tests nuevos en verde, suite aislada del paquete 1 sigue en 167 verdes y el registro real usa el contrato puro.
+
+- [ ] **T8. Validar precio canónico y porcentaje a la entrada del registro.** RF-41 (parcial).
+  - Dependencias: T7.
+  - Tests primero: precio con más de dos decimales (p. ej. 10.005) y porcentaje con más de dos (p. ej. 50.001) se rechazan con 400 y mensaje en español, sin normalizar ni quantizar silenciosamente; 100.00/50.25 pasan.
+  - Implementar: validación en `crear_corte` con los validadores puros antes de calcular; el `ValueError` existente del router la convierte en 400.
+  - Hecho cuando: entradas inválidas rechazadas con mensaje exacto y las válidas conservan identidad/escala.
+
+- [ ] **T9. Unidad de trabajo única: quitar el commit interno.** RF-32 (una escritura por operación), RNF-3.
+  - Dependencias: T7 (mismo archivo).
+  - Tests primero: POST `/cortes/` persiste el corte; `sync` con `crear_corte` persiste (hoy depende del commit interno del servicio).
+  - Implementar: retirar `db.commit()` de `corte_service.py` (conservar `flush`/`refresh` necesarios); commitean `routers/cortes.py` y `routers/sync.py`. Verificar con grep que `services/corte_service.py` no contiene `commit`.
+  - Hecho cuando: ambos caminos persisten con un solo commit por operación y `test_cortes.py` + `test_sync_roles.py` pasan.
+
+- [ ] **T10. Validador de porcentaje en el schema de usuario.** RF-41 (parcial).
+  - Dependencias: ninguna (archivo distinto); reutiliza `validar_porcentaje` sin duplicar reglas.
+  - Tests primero: crear/actualizar usuario con 100.001 o `50.000` → 422; 50.25 y 100 pasan sin normalización.
+  - Hecho cuando: el schema rechaza precisión/rango inválidos con mensaje en español y los válidos conservan representación.
+
+- [ ] **T11. Snapshot aplicado del registro (RF-5 parcial).** RF-5 (parcial).
+  - Dependencias: T7–T8.
+  - Tests primero: el corte creado conserva `precio`, `porcentaje_barbero`, `parte_barbero`, `parte_barberia` iguales a los valores validados/aplicados; cambiar después el porcentaje del barbero no altera el corte existente.
+  - Hecho cuando: tests verdes sin agregar columnas nuevas (las columnas ya existen) y sin exponer nada nuevo en el DTO personal.
+
+- [ ] **T12. Esqueleto Alembic y base solo-inspección.** RNF-3.
+  - Dependencias: ninguna (archivos nuevos).
+  - Crear `alembic.ini` (sin URL real ni secretos), `env.py` (no importa `app.main`, no abre DB), `script.py.mako` y `versions/001_base_legacy.py` que solo inspecciona el schema existente y se detiene ante diferencias, sin crear ni modificar nada.
+  - Hecho cuando: `alembic history` muestra la base sin errores ni conexión a base real; prohibido ejecutar `upgrade` contra cualquier base real en este paquete.
+
+- [ ] **T13. Regresión exacta y cierre del paquete.** RF-3/RF-4/RF-5/RF-41 (parciales), RNF-1/RNF-3/RNF-6.
+  - Dependencias: T7–T12.
+  - Convertir las assertions con `float()` de `test_cortes.py` a comparación Decimal exacta (`"50.00"`); ejecutar por archivo `test_cortes.py`, `test_sync_roles.py`, `test_roles_permisos.py` y la suite aislada del paquete 1, todo en verde, con precaución DB real registrada.
+  - Registrar comandos/resultados en la evidencia de abajo y actualizar el estado sin declarar implementada la spec completa. El cierre requiere revisión independiente (`sdd-reviewer`) y no autoriza paquete 3, API nueva, sync ni frontend.
+  - Hecho cuando: todo lo anterior en verde, solo los archivos autorizados cambiaron y queda solicitada la revisión de cierre.
+
+### Evidencia futura (paquete 2)
+
+| Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
+|---|---|---|---|
+| T7 |  |  |  |
+| T8 |  |  |  |
+| T9 |  |  |  |
+| T10 |  |  |  |
+| T11 |  |  |  |
+| T12 |  |  |  |
+| T13 |  |  | |
