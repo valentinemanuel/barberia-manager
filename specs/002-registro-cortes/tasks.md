@@ -369,7 +369,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-32 + base RF-30). No s
 
 ### Tareas en orden de dependencia
 
-- [ ] **T26. Tabla mínima de journal idempotente + migración 002.** RF-32 (base), RNF-3.
+- [x] **T26. Tabla mínima de journal idempotente + migración 002.** RF-32 (base), RNF-3.
   - Dependencias: ninguna dentro del paquete.
   - Tests primero: `alembic history` muestra `002` tras `001`; `upgrade head` en TEMP vacía crea solo `operaciones_corte` (+ `alembic_version`); en TEMP con legacy no toca tablas existentes; repetir `upgrade` es no-op.
   - Implementar: modelo `OperacionCorte` (actor_id, namespace_cliente, operacion_id UUID, accion, hash, modo_captura, estado, resultado JSON, recibida_en UTC; única la tupla clave) + revisión `002_operaciones_corte.py` solo-creación.
@@ -419,7 +419,7 @@ Aprobación recibida: alcance aprobado por el usuario (RF-32 + base RF-30). No s
 
 | Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
 |---|---|---|---|
-| T26 |  |  |  |
+| T26 | Rojo real: `history` mostraba solo `001` | Verde: `history` con `002`; TEMP vacía crea solo `operaciones_corte` (+`alembic_version`); TEMP legacy intacta + tabla nueva; repetir no-op | `upgrade` solo en TEMP (`ALEMBIC_SQLALCHEMY_URL`); `barberia.db` hash idéntico (`3fe8caa6…f924a9`); prohibido aplicar contra base real. Modelo + `__init__` + revisión `002`. |
 | T27 |  |  |  |
 | T28 |  |  |  |
 | T29 |  |  |  |
