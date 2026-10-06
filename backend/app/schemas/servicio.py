@@ -1,7 +1,24 @@
 from datetime import datetime
 from decimal import Decimal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
+
+
+def _precio_canonico(valor: Optional[Decimal]) -> Optional[Decimal]:
+    """RF-41: precio finito con hasta dos decimales, sin normalizar.
+
+    La positividad la exige Field(gt=0); aquí solo finitud y precisión,
+    porque el ORM redondea silenciosamente al leer Numeric.
+    """
+    if valor is None:
+        return None
+    if not isinstance(valor, Decimal):
+        raise ValueError("El precio debe ser Decimal")
+    if not valor.is_finite():
+        raise ValueError("El precio debe ser finito")
+    if valor.as_tuple().exponent < -2:
+        raise ValueError("El precio debe tener como máximo dos decimales")
+    return valor
 
 
 class ServicioBase(BaseModel):
@@ -12,7 +29,10 @@ class ServicioBase(BaseModel):
 
 
 class ServicioCrear(ServicioBase):
-    pass
+    @field_validator("precio")
+    @classmethod
+    def _validar_precio(cls, valor: Decimal) -> Decimal:
+        return _precio_canonico(valor)
 
 
 class ServicioActualizar(BaseModel):
@@ -21,6 +41,11 @@ class ServicioActualizar(BaseModel):
     precio: Optional[Decimal] = Field(None, gt=0)
     duracion_minutos: Optional[int] = Field(None, gt=0)
     activo: Optional[bool] = None
+
+    @field_validator("precio")
+    @classmethod
+    def _validar_precio(cls, valor: Optional[Decimal]) -> Optional[Decimal]:
+        return _precio_canonico(valor)
 
 
 class ServicioResponse(ServicioBase):

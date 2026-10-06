@@ -351,3 +351,31 @@ def test_corte_conserva_snapshot_ante_cambio_posterior_de_porcentaje(client):
     assert Decimal(data["porcentaje_barbero"]) == Decimal("50")
     assert data["parte_barbero"] == "50.00"
     assert data["parte_barberia"] == "50.00"
+
+
+def _payload_servicio_crear(precio):
+    return {
+        "nombre": "Servicio T8bis",
+        "descripcion": "Validacion de precio canonico",
+        "precio": precio,
+        "duracion_minutos": 30,
+    }
+
+
+def test_servicio_rechaza_precio_con_mas_de_dos_decimales():
+    """T8-bis: '10.005' se rechaza en la carga del catálogo (RF-41)."""
+    from pydantic import ValidationError
+    from app.schemas.servicio import ServicioCrear, ServicioActualizar
+
+    with pytest.raises(ValidationError):
+        ServicioCrear(**_payload_servicio_crear("10.005"))
+    with pytest.raises(ValidationError):
+        ServicioActualizar(precio="10.005")
+
+
+def test_servicio_acepta_precio_canonico_sin_normalizar():
+    """T8-bis: '100.00' y '0.05' pasan conservando representación."""
+    from app.schemas.servicio import ServicioCrear
+
+    assert ServicioCrear(**_payload_servicio_crear("100.00")).precio == Decimal("100.00")
+    assert ServicioCrear(**_payload_servicio_crear("0.05")).precio == Decimal("0.05")
