@@ -123,6 +123,8 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 - `tasks.md` con T20–T25 (~2–3h) en rama `feat/spec-002-paquete-4-registro-online`: destino admin, momento retroactivo admin, momento automático barbero, snapshot del destinatario, errores exactos y regresión. Decisiones: `barbero_id`/`momento_real` solo admin (403/400 si barbero los envía), destino inactivo permitido con porcentaje, sin precio/porcentaje manual.
 - Implementación T20–T25 completada y pusheada a la misma rama (82 backend + 167 aislada en verde). `barberia.db` intacta (mismo hash).
 - Revisión de cierre ejecutada: **APROBADO PAQUETE 4** sin correcciones (P2-1 destacado: destino sin validar rol —admin podría atribuir a otro admin— requiere tu decisión de spec). No autoriza paquete 5 ni declara la spec implementada.
+- P1-2 reportado como **deuda bloqueante del paquete de auditoría**: edición admin en bloqueado exige motivo pero lo descarta y pisa valores (RF-26 parcial). Ver decisión del usuario en MEMORY.
+- Decisión del usuario sobre P1-2 (delegada al coordinador): journal mínimo ahora en vez de deuda. Implementado T46-bis en la misma rama (tabla `auditoria_corte` + migración `005` + hooks en PATCH/anular, 120 + 167 verdes, DB con tabla vacía baseline `bd4c32af…`). P1-2 CERRADO.
 - Decisión P2-1 tomada por el usuario: restringir destino a barberos (propio explícito permitido). Implementada en rama `fix/destino-solo-barberos` (rojo→verde, 58 passed, DB intacta).
 
 ## Spec 002 — paquete 5 implementado y aprobado (2026-10-06)
@@ -132,6 +134,14 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 ## Spec 002 — paquete 6 redactado (2026-10-06)
 - `tasks.md` con T34–T41 (~3–4h) en rama `feat/spec-002-paquete-6-abonos-saldos`: tabla movimientos + migración 003, abonos por concepto, independencia, saldos/estados, cobro inicial, exceso online + bloqueo calculado, privacidad y regresión. Decisiones: UUID por movimiento, obligación = precio/parte_barbero, sin excedentes/unknown/revisión en este paquete, endpoint de saldos separado, gate de migración real vigente.
 - T34–T41 en verde + `sdd-reviewer`: **APROBADO PAQUETE 6**. Corrección de la revisión: `uuid` de movimiento validado como `UUID` + test 422. Divulgación verificada: `barberia.db` ganó la tabla vacía `movimientos_corte` por `create_all` histórico (0 filas, legacy intacto, baseline `4c7f1b19…`). P2 para futuro: carrera concurrente de abonos sin lock, UUID duplicada sin 409 ante distinto payload, rama offline sin revisión RF-38 todavía. No autoriza paquete 7 ni declara la spec implementada.
+
+## Spec 002 — paquete 7 redactado (2026-10-06)
+- `tasks.md` con T42–T49 (~3–4h) en rama `feat/spec-002-paquete-7-edicion-anulacion`: columnas de anulación + migración 004, edición propia con recálculo RF-42, bloqueo 409, anulación con motivo admin, fuera de devengado + sin abonos al anulado, privacidad y regresión. Decisiones: 409 bloqueado/anulado, motivo obligatorio admin en bloqueado, admin conserva listado + reportes, sin compensaciones/revisión/jornadas en este paquete. Implementación pendiente de aprobación.
+
+## Spec 002 — paquete 7 implementado y revisado (2026-10-06)
+- T42–T49 en verde + `sdd-reviewer`: REQUIERE CORRECCIONES → P1-1 (resúmenes personales contaban anulados) corregido por la revisión y verificado por el coordinador; P2 aplicados (downgrade FK, redacción T46). Tras correcciones: **APROBADO PAQUETE 7**.
+- P1-2 reportado como **deuda bloqueante del paquete de auditoría**: edición admin en bloqueado exige motivo pero lo descarta y pisa valores (RF-26 parcial). Requiere decisión del usuario antes del merge (aceptar deuda o journal mínimo).
+- Divulgación vigente: `barberia.db` estable (`4c7f1b19…`). No autoriza paquete 8 ni declara la spec implementada.
 
 ## Recuperación documental (2026-10-05)
 - Recuperado el contenido útil de `b211ee5` en una rama nueva desde `dev`, sin cherry-pick ni reescritura de la rama histórica `feat/mcp-config-y-offline`.

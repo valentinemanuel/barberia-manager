@@ -76,6 +76,10 @@ def crear_movimiento(
 ):
     """Registra un abono ordinario en un concepto del corte."""
     corte = _corte_propio_o_gestion(db, corte_id, actor)
+    if corte.anulado_en is not None:
+        raise HTTPException(
+            status_code=409, detail="Corte anulado: no admite abonos ordinarios"
+        )
     momento = datos.momento_real
     if momento is not None:
         if actor.rol != Rol.ADMIN:

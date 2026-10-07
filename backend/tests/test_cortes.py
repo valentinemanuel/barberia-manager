@@ -1325,6 +1325,304 @@ def test_cobro_parcial_sin_importe_400(client):
     assert r.status_code == 400
 
 
+def _editar_corte(client, token, corte_id, body):
+    return client.patch(
+        f"/api/cortes/{corte_id}", json=body, headers={"Authorization": f"Bearer {token}"}
+    )
+
+
+def test_editar_metodo_conserva_importes(client):
+    """T43: solo método → mismos precio/porcentaje/reparto."""
+    corte_id = _corte_para_abonos(client, "barbero_t43")
+    token = _token_para(client, "barbero_t43")
+
+    respuesta = _editar_corte(client, token, corte_id, {"metodo_pago": "tarjeta"})
+    assert respuesta.status_code == 200
+    data = respuesta.json()
+    assert data["metodo_pago"] == "tarjeta"
+    assert data["precio"] == "100.00"
+    assert data["parte_barbero"] == "50.00"
+
+
+def test_editar_servicio_recalcula_valores_actuales(client):
+    """T43 (RF-42): cambio de servicio → precio/porcentaje/reparto actuales."""
+    from decimal import Decimal as DecimalT43
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t43b", Decimal("50"), Decimal("100.00"))
+    db.add(
+        Servicio(
+            nombre="Servicio T43B",
+            descripcion="Segundo servicio",
+            precio=DecimalT43("200.00"),
+            duracion_minutos=30,
+            activo=True,
+        )
+    )
+    db.commit()
+    servicio2 = db.query(Servicio).filter(Servicio.nombre == "Servicio T43B").first().id
+    db.close()
+
+    corte_id = None
+    db = TestingSessionLocal()
+    servicio1 = db.query(Servicio).filter(Servicio.nombre == "Servicio T7").first()
+    db.close()
+    token = _token_para(client, "barbero_t43b")
+    registro = client.post(
+        "/api/cortes/",
+        json={"servicio_id": servicio1.id, "metodo_pago": "efectivo"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    corte_id = registro.json()["id"]
+
+    respuesta = _editar_corte(client, token, corte_id, {"servicio_id": servicio2})
+    assert respuesta.status_code == 200
+    data = respuesta.json()
+    assert data["precio"] == "200.00"
+    assert data["parte_barbero"] == "100.00"
+
+
+def test_editar_ajeno_404_y_servicio_invalido(client):
+    """T43: ajeno → 404; servicio inexistente → 404."""
+    from app.models.usuario import Rol as RolModelo
+
+    corte_id = _corte_para_abonos(client, "barbero_t43c")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barbero_t43d", RolModelo.BARBERO)
+    db.close()
+
+    assert _editar_corte(
+        client, _token_para(client, "barbero_t43d"), corte_id, {"metodo_pago": "tarjeta"}
+    ).status_code == 404
+    assert _editar_corte(
+        client, _token_para(client, "barbero_t43c"), corte_id, {"servicio_id": 9999}
+    ).status_code == 404
+
+
+def test_editar_bloqueado_409_y_abono_sigue_201(client):
+    """T44 (RF-23/25): con pagos, el barbero no edita (409) pero sí abona."""
+    corte_id = _corte_para_abonos(client, "barbero_t44")
+    token = _token_para(client, "barbero_t44")
+
+    assert _abonar(client, token, corte_id, "cliente", 10).status_code == 201
+    respuesta = _editar_corte(client, token, corte_id, {"metodo_pago": "tarjeta"})
+    assert respuesta.status_code == 409
+    assert "bloqueado" in respuesta.json()["detail"].lower()
+    assert _abonar(client, token, corte_id, "cliente", 10).status_code == 201
+
+
+def test_admin_edita_bloqueado_200(client):
+    """T44: el admin gestiona bloqueados (enforcement solo barbero)."""
+    from app.models.usuario import Rol as RolModelo
+
+    corte_id = _corte_para_abonos(client, "barbero_t44b")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t44", RolModelo.ADMIN)
+    db.close()
+
+    assert _abonar(
+        client, _token_para(client, "barbero_t44b"), corte_id, "cliente", 10
+    ).status_code == 201
+    # T46: el admin en bloqueado exige motivo (contrato actualizado).
+    respuesta = client.patch(
+        f"/api/cortes/{corte_id}",
+        json={"metodo_pago": "tarjeta", "motivo": "ajuste administrativo"},
+        headers={"Authorization": f"Bearer {_token_para(client, 'admin_t44')}"},
+    )
+    assert respuesta.status_code == 200
+
+
+def _anular_corte(client, token, corte_id, motivo=None):
+    body = {"motivo": motivo} if motivo is not None else {}
+    return client.post(
+        f"/api/cortes/{corte_id}/anular",
+        json=body,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+
+def test_anular_propio_no_bloqueado_con_marca(client):
+    """T45: anulación propia con marca visible; sin reactivación."""
+    corte_id = _corte_para_abonos(client, "barbero_t45")
+    token = _token_para(client, "barbero_t45")
+
+    r = _anular_corte(client, token, corte_id)
+    assert r.status_code == 200
+    assert r.json()["anulado_en"] is not None
+
+    historial = client.get(
+        "/api/cortes/mi/historial", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert historial.json()[0]["anulado_en"] is not None
+
+    assert _anular_corte(client, token, corte_id).status_code == 409
+    assert _editar_corte(client, token, corte_id, {"metodo_pago": "tarjeta"}).status_code == 409
+
+
+def test_anular_bloqueado_barbero_409(client):
+    """T45 (split T44): el barbero no anula bloqueados."""
+    corte_id = _corte_para_abonos(client, "barbero_t45b")
+    token = _token_para(client, "barbero_t45b")
+
+    assert _abonar(client, token, corte_id, "cliente", 10).status_code == 201
+    r = _anular_corte(client, token, corte_id)
+    assert r.status_code == 409
+    assert "bloqueado" in r.json()["detail"].lower()
+
+
+def test_admin_corrige_bloqueado_exige_motivo(client):
+    """T46 (RF-26): admin en bloqueado sin motivo → 400; con motivo → 200."""
+    from app.models.usuario import Rol as RolModelo
+
+    corte_id = _corte_para_abonos(client, "barbero_t46")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t46", RolModelo.ADMIN)
+    db.close()
+    token_admin = _token_para(client, "admin_t46")
+    token_barbero = _token_para(client, "barbero_t46")
+
+    assert _abonar(client, token_barbero, corte_id, "cliente", 10).status_code == 201
+
+    r = _editar_corte(client, token_admin, corte_id, {"metodo_pago": "tarjeta"})
+    assert r.status_code == 400
+    r = client.patch(
+        f"/api/cortes/{corte_id}",
+        json={"metodo_pago": "tarjeta", "motivo": "corrige método mal cargado"},
+        headers={"Authorization": f"Bearer {token_admin}"},
+    )
+    assert r.status_code == 200
+    assert r.json()["metodo_pago"] == "tarjeta"
+
+    r = _anular_corte(client, token_admin, corte_id)
+    assert r.status_code == 400
+    r = _anular_corte(client, token_admin, corte_id, motivo="duplicado operativo")
+    assert r.status_code == 200
+    assert r.json()["anulado_motivo"] == "duplicado operativo"
+    assert r.json()["anulado_en"] is not None
+
+
+def test_journal_conserva_antes_despues_motivo_autor(client):
+    """T46-bis (RF-26 pleno): cada edición/anulación deja journal con
+    antes/después, motivo, autor y momento."""
+    from app.models.auditoria_corte import AuditoriaCorte
+    from app.models.usuario import Rol as RolModelo
+
+    corte_id = _corte_para_abonos(client, "barbero_t46b")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t46b", RolModelo.ADMIN)
+    db.close()
+    token_admin = _token_para(client, "admin_t46b")
+
+    r = client.patch(
+        f"/api/cortes/{corte_id}",
+        json={"metodo_pago": "tarjeta", "motivo": "corrige método"},
+        headers={"Authorization": f"Bearer {token_admin}"},
+    )
+    assert r.status_code == 200
+
+    db = TestingSessionLocal()
+    filas = db.query(AuditoriaCorte).filter(AuditoriaCorte.corte_id == corte_id).all()
+    assert len(filas) == 1
+    assert filas[0].accion == "edicion"
+    assert filas[0].motivo == "corrige método"
+    assert filas[0].antes["metodo_pago"] == "efectivo"
+    assert filas[0].despues["metodo_pago"] == "tarjeta"
+    assert filas[0].momento_utc is not None
+    db.close()
+
+    r = _anular_corte(client, token_admin, corte_id, motivo="cierre erróneo")
+    assert r.status_code == 200
+
+    db = TestingSessionLocal()
+    filas = (
+        db.query(AuditoriaCorte)
+        .filter(AuditoriaCorte.corte_id == corte_id)
+        .order_by(AuditoriaCorte.id)
+        .all()
+    )
+    assert len(filas) == 2
+    assert filas[1].accion == "anulacion"
+    assert filas[1].motivo == "cierre erróneo"
+    assert filas[1].antes["anulado_en"] is None
+    assert filas[1].despues["anulado_en"] is not None
+    db.close()
+
+
+def test_anulado_fuera_de_devengado(client):
+    """T47: el anulado no cuenta en reportes de devengado."""
+    from app.models.usuario import Rol as RolModelo
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t47", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    _crear_usuario(db, "admin_t47", RolModelo.ADMIN)
+    db.close()
+
+    _login_y_registrar_corte(client, "barbero_t47", servicio_id)
+    r2 = _login_y_registrar_corte(client, "barbero_t47", servicio_id)
+    _anular_corte(client, _token_para(client, "barbero_t47"), r2.json()["id"])
+
+    dashboard = client.get(
+        "/api/reportes/dashboard",
+        headers={"Authorization": f"Bearer {_token_para(client, 'admin_t47')}"},
+    )
+    assert dashboard.status_code == 200
+    assert dashboard.json()["cortes_hoy"] == 1
+
+
+def test_sin_abonos_al_anulado_y_movimientos_conservados(client):
+    """T47 (RF-46 parcial): sin abonos ordinarios al anulado; previos visibles."""
+    from app.models.usuario import Rol as RolModelo
+
+    corte_id = _corte_para_abonos(client, "barbero_t47b")
+    token = _token_para(client, "barbero_t47b")
+    assert _abonar(client, token, corte_id, "cliente", 30).status_code == 201
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t47b", RolModelo.ADMIN)
+    db.close()
+    r = _anular_corte(
+        client, _token_para(client, "admin_t47b"), corte_id, motivo="cierre con abono"
+    )
+    assert r.status_code == 200
+
+    assert _abonar(client, token, corte_id, "cliente", 10).status_code == 409
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["abonado"] == "30.00"
+
+
+def test_edicion_anulacion_respetan_privacidad(client):
+    """T48: ajeno → 404; respuestas sin datos del negocio; admin y listado OK."""
+    from app.models.usuario import Rol as RolModelo
+
+    corte_id = _corte_para_abonos(client, "barbero_t48")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barbero_t48b", RolModelo.BARBERO)
+    _crear_usuario(db, "admin_t48", RolModelo.ADMIN)
+    db.close()
+    token_ajeno = _token_para(client, "barbero_t48b")
+    token_admin = _token_para(client, "admin_t48")
+
+    assert _editar_corte(client, token_ajeno, corte_id, {"metodo_pago": "tarjeta"}).status_code == 404
+    assert _anular_corte(client, token_ajeno, corte_id).status_code == 404
+
+    r = _editar_corte(
+        client, _token_para(client, "barbero_t48"), corte_id, {"metodo_pago": "tarjeta"}
+    )
+    assert r.status_code == 200
+    assert _sin_campos_prohibidos(r.json()) == []
+
+    r = _anular_corte(client, token_admin, corte_id, motivo="auditoría")
+    assert r.status_code == 200
+    assert _sin_campos_prohibidos(r.json()) == []
+
+    listado = client.get(
+        "/api/cortes/", headers={"Authorization": f"Bearer {token_admin}"}
+    )
+    assert listado.status_code == 200
+    assert listado.json()[0]["parte_barberia"] == "50.00"
+
+
 def test_abono_mayor_al_restante_400(client):
     """T39: exceso online se rechaza sin crear movimiento."""
     from app.models.finanzas_corte import MovimientoCorte
@@ -1412,3 +1710,22 @@ def test_reintentos_agotados_sin_efecto_residual(client):
         )
     assert db.query(OperacionCorte).count() == 0
     db.close()
+
+
+def test_resumen_personal_excluye_anulados(client):
+    """Revisión paquete 7 (RF-27): el anulado no cuenta en resúmenes propios."""
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t47c", Decimal("50"), Decimal("100.00"))
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+
+    _login_y_registrar_corte(client, "barbero_t47c", servicio_id)
+    r2 = _login_y_registrar_corte(client, "barbero_t47c", servicio_id)
+    _anular_corte(client, _token_para(client, "barbero_t47c"), r2.json()["id"])
+
+    token = _token_para(client, "barbero_t47c")
+    auth = {"Authorization": f"Bearer {token}"}
+    for ruta in ("dia", "semana", "mes"):
+        r = client.get(f"/api/cortes/mi/resumen/{ruta}", headers=auth)
+        assert r.status_code == 200, ruta
+        assert r.json()["total_cortes"] == 1, ruta
