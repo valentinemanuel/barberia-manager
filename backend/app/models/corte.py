@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, Numeric, DateTime, ForeignKey, Enum, Boolean
+from sqlalchemy import Column, Integer, Numeric, DateTime, ForeignKey, Enum, Boolean, String
 from sqlalchemy.orm import relationship
 import enum
 
@@ -25,6 +25,13 @@ class Corte(Base):
     metodo_pago = Column(Enum(MetodoPago), default=MetodoPago.EFECTIVO, nullable=False)
     fecha = Column(DateTime, default=datetime.utcnow, nullable=False)
     sincronizado = Column(Boolean, default=True, nullable=False)
+    # Anulación terminal (paquete 7, RF-27/46 parcial): sin borrado ni
+    # reactivación. La pertenencia a cierre corresponde a jornadas.
+    anulado_en = Column(DateTime, nullable=True)
+    anulado_motivo = Column(String(255), nullable=True)
+    anulado_por = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
 
-    barbero = relationship("Usuario", backref="cortes")
+    barbero = relationship(
+        "Usuario", backref="cortes", foreign_keys=[barbero_id]
+    )
     servicio = relationship("Servicio", backref="cortes")

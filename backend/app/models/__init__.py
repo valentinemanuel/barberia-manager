@@ -17,6 +17,7 @@ from app.models.finanzas_corte import (
     ConceptoMovimiento,
     TipoMovimiento,
 )
+from app.models.auditoria_corte import AuditoriaCorte, AccionAuditoriaCorte
 
 __all__ = [
     "Usuario",
@@ -35,4 +36,6 @@ __all__ = [
     "MovimientoCorte",
     "ConceptoMovimiento",
     "TipoMovimiento",
+    "AuditoriaCorte",
+    "AccionAuditoriaCorte",
 ]

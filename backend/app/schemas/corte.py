@@ -33,6 +33,22 @@ class CorteCrear(CorteBase):
     importe_cobro: Optional[Decimal] = None
 
 
+class CorteEditar(BaseModel):
+    """Edición parcial (paquete 7, RF-22/RF-42): servicio y/o método."""
+
+    servicio_id: Optional[int] = None
+    metodo_pago: Optional[MetodoPago] = None
+    # Motivo obligatorio para admin sobre bloqueado (RF-26); se exige pero
+    # su journal completo corresponde al paquete de auditoría.
+    motivo: Optional[str] = None
+
+
+class CorteAnular(BaseModel):
+    """Anulación (paquete 7, RF-27): motivo obligatorio para admin en bloqueado."""
+
+    motivo: Optional[str] = None
+
+
 class CorteResponse(BaseModel):
     id: int
     barbero_id: int
@@ -44,6 +60,8 @@ class CorteResponse(BaseModel):
     metodo_pago: MetodoPago
     fecha: datetime
     sincronizado: bool
+    anulado_en: Optional[datetime] = None
+    anulado_motivo: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -63,6 +81,8 @@ class CortePersonal(BaseModel):
     metodo_pago: MetodoPago
     fecha: datetime
     sincronizado: bool
+    anulado_en: Optional[datetime] = None
+    anulado_motivo: Optional[str] = None
 
     class Config:
         from_attributes = True
