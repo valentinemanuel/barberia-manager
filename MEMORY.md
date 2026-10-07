@@ -123,6 +123,8 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 - `tasks.md` con T20–T25 (~2–3h) en rama `feat/spec-002-paquete-4-registro-online`: destino admin, momento retroactivo admin, momento automático barbero, snapshot del destinatario, errores exactos y regresión. Decisiones: `barbero_id`/`momento_real` solo admin (403/400 si barbero los envía), destino inactivo permitido con porcentaje, sin precio/porcentaje manual.
 - Implementación T20–T25 completada y pusheada a la misma rama (82 backend + 167 aislada en verde). `barberia.db` intacta (mismo hash).
 - Revisión de cierre ejecutada: **APROBADO PAQUETE 4** sin correcciones (P2-1 destacado: destino sin validar rol —admin podría atribuir a otro admin— requiere tu decisión de spec). No autoriza paquete 5 ni declara la spec implementada.
+- P1-2 reportado como **deuda bloqueante del paquete de auditoría**: edición admin en bloqueado exige motivo pero lo descarta y pisa valores (RF-26 parcial). Ver decisión del usuario en MEMORY.
+- Decisión del usuario sobre P1-2 (delegada al coordinador): journal mínimo ahora en vez de deuda. Implementado T46-bis en la misma rama (tabla `auditoria_corte` + migración `005` + hooks en PATCH/anular, 120 + 167 verdes, DB con tabla vacía baseline `bd4c32af…`). P1-2 CERRADO.
 - Decisión P2-1 tomada por el usuario: restringir destino a barberos (propio explícito permitido). Implementada en rama `fix/destino-solo-barberos` (rojo→verde, 58 passed, DB intacta).
 
 ## Spec 002 — paquete 5 implementado y aprobado (2026-10-06)

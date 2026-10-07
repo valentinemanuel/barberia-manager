@@ -6,6 +6,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
+from app.models.auditoria_corte import AccionAuditoriaCorte, AuditoriaCorte
 from app.models.corte import Corte, MetodoPago
 from app.models.servicio import Servicio
 from app.models.usuario import Usuario
@@ -32,6 +33,46 @@ def anular_corte(
     corte.anulado_por = actor.id
     db.flush()
     return corte
+
+
+def snapshot_corte(corte: Corte) -> dict:
+    """Snapshot explícito para el journal (Decimal como strings exactos)."""
+    return {
+        "servicio_id": corte.servicio_id,
+        "metodo_pago": corte.metodo_pago.value
+        if isinstance(corte.metodo_pago, MetodoPago)
+        else str(corte.metodo_pago),
+        "precio": str(corte.precio),
+        "porcentaje_barbero": str(corte.porcentaje_barbero),
+        "parte_barbero": str(corte.parte_barbero),
+        "parte_barberia": str(corte.parte_barberia),
+        "anulado_en": corte.anulado_en.isoformat() if corte.anulado_en else None,
+        "anulado_motivo": corte.anulado_motivo,
+    }
+
+
+def auditar_cambio(
+    db: Session,
+    *,
+    corte_id: int,
+    actor_id: int,
+    accion: AccionAuditoriaCorte,
+    antes: dict,
+    despues: dict,
+    motivo: str | None = None,
+) -> AuditoriaCorte:
+    """Agrega una fila append-only al journal (misma UoW, sin commit)."""
+    fila = AuditoriaCorte(
+        corte_id=corte_id,
+        actor_id=actor_id,
+        accion=accion,
+        antes=antes,
+        despues=despues,
+        motivo=motivo,
+    )
+    db.add(fila)
+    db.flush()
+    return fila
 
 
 def editar_corte(

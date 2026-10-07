@@ -20,8 +20,11 @@ from app.services.corte_service import crear_corte
 from app.services.edicion_corte_service import (
     NoEncontrado,
     anular_corte as aplicar_anulacion,
+    auditar_cambio,
     editar_corte as aplicar_edicion,
+    snapshot_corte,
 )
+from app.models.auditoria_corte import AccionAuditoriaCorte
 from app.services.movimiento_corte_service import corte_bloqueado
 from app.services.movimiento_corte_service import registrar_abono
 from app.models.finanzas_corte import ConceptoMovimiento
@@ -237,11 +240,21 @@ def editar_corte_endpoint(
             detail="Corregir un corte bloqueado exige motivo",
         )
     try:
+        antes = snapshot_corte(corte)
         corte = aplicar_edicion(
             db,
             corte=corte,
             servicio_id=datos.servicio_id,
             metodo=datos.metodo_pago,
+        )
+        auditar_cambio(
+            db,
+            corte_id=corte.id,
+            actor_id=actor.id,
+            accion=AccionAuditoriaCorte.EDICION,
+            antes=antes,
+            despues=snapshot_corte(corte),
+            motivo=datos.motivo,
         )
     except NoEncontrado as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -281,7 +294,17 @@ def anular_corte_endpoint(
             status_code=400,
             detail="Anular un corte bloqueado exige motivo",
         )
+    antes_anulacion = snapshot_corte(corte)
     corte = aplicar_anulacion(db, corte=corte, actor=actor, motivo=datos.motivo)
+    auditar_cambio(
+        db,
+        corte_id=corte.id,
+        actor_id=actor.id,
+        accion=AccionAuditoriaCorte.ANULACION,
+        antes=antes_anulacion,
+        despues=snapshot_corte(corte),
+        motivo=datos.motivo,
+    )
     db.commit()
     db.refresh(corte)
     return corte

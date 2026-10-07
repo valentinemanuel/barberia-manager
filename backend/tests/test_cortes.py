@@ -1501,6 +1501,53 @@ def test_admin_corrige_bloqueado_exige_motivo(client):
     assert r.json()["anulado_en"] is not None
 
 
+def test_journal_conserva_antes_despues_motivo_autor(client):
+    """T46-bis (RF-26 pleno): cada edición/anulación deja journal con
+    antes/después, motivo, autor y momento."""
+    from app.models.auditoria_corte import AuditoriaCorte
+    from app.models.usuario import Rol as RolModelo
+
+    corte_id = _corte_para_abonos(client, "barbero_t46b")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t46b", RolModelo.ADMIN)
+    db.close()
+    token_admin = _token_para(client, "admin_t46b")
+
+    r = client.patch(
+        f"/api/cortes/{corte_id}",
+        json={"metodo_pago": "tarjeta", "motivo": "corrige método"},
+        headers={"Authorization": f"Bearer {token_admin}"},
+    )
+    assert r.status_code == 200
+
+    db = TestingSessionLocal()
+    filas = db.query(AuditoriaCorte).filter(AuditoriaCorte.corte_id == corte_id).all()
+    assert len(filas) == 1
+    assert filas[0].accion == "edicion"
+    assert filas[0].motivo == "corrige método"
+    assert filas[0].antes["metodo_pago"] == "efectivo"
+    assert filas[0].despues["metodo_pago"] == "tarjeta"
+    assert filas[0].momento_utc is not None
+    db.close()
+
+    r = _anular_corte(client, token_admin, corte_id, motivo="cierre erróneo")
+    assert r.status_code == 200
+
+    db = TestingSessionLocal()
+    filas = (
+        db.query(AuditoriaCorte)
+        .filter(AuditoriaCorte.corte_id == corte_id)
+        .order_by(AuditoriaCorte.id)
+        .all()
+    )
+    assert len(filas) == 2
+    assert filas[1].accion == "anulacion"
+    assert filas[1].motivo == "cierre erróneo"
+    assert filas[1].antes["anulado_en"] is None
+    assert filas[1].despues["anulado_en"] is not None
+    db.close()
+
+
 def test_anulado_fuera_de_devengado(client):
     """T47: el anulado no cuenta en reportes de devengado."""
     from app.models.usuario import Rol as RolModelo
