@@ -797,7 +797,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - Implementar: `motivo` en DTOs propios (personal + movimientos + saldos); nada de otros profesionales.
   - Hecho cuando: verdes sin filtraciones y sin cambios al contrato admin.
 
-- [ ] **T64. UI de saldos con excedente/revisión/motivos.** RF-12/RF-21 (parciales), RNF-4.
+- [x] **T64. UI de saldos con excedente/revisión/motivos.** RF-12/RF-21 (parciales), RNF-4.
   - Dependencias: T58–T63.
   - Tests primero (node, patrón T50–T55): codec/estados de la vista (excedente separado de restante, revisión aparte con causa e importe, motivos propios visibles); `npm run build` en verde.
   - Implementar: vista de saldos del titular con excedente/revisión/motivos + tipos; sin rediseño general.
@@ -819,5 +819,5 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 | T61 | Rojo real: triple 404 (sin ruta devoluciones) | Verde: `94 passed` (2 archivos, incluye carrera con threads) | DB estable; `movimiento_corte_service.py` (`capacidad_devolucion` = neto no negativo + `registrar_devolucion` con motivo/capacidad/idempotencia + `_candado_devolucion` de proceso) + `movimientos_corte.py` (POST solo admin, UoW con candado + journal con capacidad real, `rollback` en error) + `test_cortes.py` (límite, carrera 201+400 determinista, replay, permisos). Multi-worker/PG exigirá locks de fila (deuda explícita). |
 | T62 | Rojo real: `restante` seguía 70 tras anular (sin cancelación); correctivos al anulado en verde inicial (endpoints sin check, honesto) | Verde: `119 passed` (3 archivos) | DB estable; `movimiento_corte_service.py` (anulado ⇒ obligaciones 0, neto→excedente; historial intacto) + `cortes.py` (journal ANULACION con `obligaciones_canceladas` + netos/excedentes) + `test_cortes.py`. Sin nueva migración: la escritura del efecto es la fila de journal (terminal, sin reapertura). Ordinario al anulado sigue 409 (POST y sync). |
 | T63 | Rojo real: doble 404 (sin listado); ajuste honesto: mi test de devolución olvidó el abono previo (capacidad 0 → 400 correcto) | Verde: `98 passed` (2 archivos) | DB estable; `movimientos_corte.py` (GET listado propio/gestión con motivos, 404 ajeno idéntico, revisiones con causa) + `test_cortes.py` (motivos propios visibles, detector T17 extendido a listado/saldos/correctivos limpio, admin intacto). Sin exponer autor ni datos ajenos. |
-| T64 |  |  |  |
+| T64 | Rojo real: `ROJO T64: falta src/services/saldosVista.ts` (exit 1) | Verde: `VERDE T64` + `npm run build` OK (exit 0, SW generado) | Solo frontend: `saldosVista.ts` (puro: excedente aparte, revisión con causa, motivos propios) + `scripts/t64-test.mjs` + `MisSaldos.tsx` (nueva: historial propio + saldos/movimientos por corte, sin totales del negocio) + ruta `/saldos` + nav. Sin `any`; display con `formatearMoneda` existente (sin aritmética float nueva). |
 | T65 |  |  |  |
