@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useOnlineStatus } from './useOnlineStatus'
 import { db } from '../services/db'
 import api from '../services/api'
+import { useAuthStore } from '../store/authStore'
 
 export function useSync() {
   const online = useOnlineStatus()
@@ -17,6 +18,65 @@ export function useSync() {
   const sincronizar = async () => {
     setSincronizando(true)
     try {
+      // Camino v2 (paquete 8, T51): outbox por cuenta con UUID obligatoria.
+      // La cuenta propietaria es el actor actual; solo se envían sus
+      // pendientes (el aislamiento total A/B llega en T53).
+      const actorId = useAuthStore.getState().usuario?.id ?? null
+      if (actorId !== null) {
+        const pendientesV2 = await db.outboxOperaciones
+          .where('actorId')
+          .equals(actorId)
+          .filter((o) => o.estado === 'pendiente')
+          .toArray()
+        if (pendientesV2.length > 0) {
+          try {
+            for (const op of pendientesV2) {
+              await db.outboxOperaciones.update(op.operacionUuid, {
+                estado: 'enviando',
+                intento: op.intento + 1,
+              })
+            }
+            const respuesta = await api.post('/sync/', {
+              operaciones: pendientesV2.map((op) => ({
+                id: op.operacionUuid,
+                accion: 'crear_corte_v2',
+                datos: {
+                  operacion_uuid: op.operacionUuid,
+                  servicio_id: op.servicioId,
+                  metodo_pago: op.metodoPago,
+                  modo_captura: op.modoCaptura,
+                  instante_cambio: op.instanteCambio,
+                  momento_real: op.momentoReal,
+                },
+              })),
+            })
+            for (const resultado of respuesta.data.resultados ?? []) {
+              if (resultado.aceptada) {
+                await db.outboxOperaciones.update(resultado.id, {
+                  estado: 'aceptada',
+                  idServidor: resultado.corte_id,
+                  actualizadoEn: new Date().toISOString(),
+                })
+                if (resultado.corte_id !== undefined && resultado.corte_id !== null) {
+                  await db.mapeoOperaciones.put({
+                    operacionUuid: resultado.id,
+                    corteIdServidor: resultado.corte_id,
+                  })
+                }
+              } else {
+                await db.outboxOperaciones.update(resultado.id, {
+                  estado: 'rechazada',
+                  ultimoError: resultado.motivo ?? 'rechazada',
+                  actualizadoEn: new Date().toISOString(),
+                })
+              }
+            }
+          } catch (error) {
+            console.error('Error sincronizando outbox v2:', error)
+          }
+        }
+      }
+
       // Sincronizar operaciones pendientes (cortes encolados mientras offline).
       // MIENTRAS offline, el rol usado es el último rol conocido cacheado
       // (authStore persistido); al sincronizar, el servidor revalida cada

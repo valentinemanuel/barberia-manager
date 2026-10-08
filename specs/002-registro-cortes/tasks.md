@@ -669,7 +669,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - Implementar: `operacionesCortes.ts` + stores v2 en `db.ts` (outbox/mapping, índices string/number, cuenta propietaria = actor, no `barbero_id`); `RegistroCortes.tsx` captura `ahora` una vez y escribe primero en outbox.
   - Hecho cuando: registro sin conexión queda durable con UUID y pendiente visible; sin `Number()` ni `*100` float en el camino nuevo.
 
-- [ ] **T51. Push sync de cortes con UUID obligatoria v2 + estados.** RF-30/RF-32/RF-57 (parciales), RNF-3.
+- [x] **T51. Push sync de cortes con UUID obligatoria v2 + estados.** RF-30/RF-32/RF-57 (parciales), RNF-3.
   - Dependencias: T50.
   - Tests primero: envelope v2 con `operacion_uuid` obligatorio rechaza sin UUID (400/422); reintento misma UUID no duplica (200 mismo ID); respuesta trae `estado` + `mapping UUID→ID` + `snapshot definitivo`; corte rechazado conserva dependientes sin aplicar (RF-57).
   - Implementar: `sync.py` exige UUID en camino v2 (legacy sin UUID intacto) + pasa `modo/hash` al ejecutor; estados `aceptada/rechazada/revision/dependiente_sin_aplicar` mínimos con causa.
@@ -716,7 +716,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 | Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
 |---|---|---|---|
 | T50 | Rojo real: `ROJO T50: falta src/services/operacionesCortes.ts` (exit 1) + asserts `sin Number()` ajustados a falsos positivos (comentarios y `Number(bigint)`) | Verde: `VERDE T50` (node, codec + HALF_UP + UUID + instante único) + `npm run build` OK (tsc + vite, sw generado) | Solo frontend: `operacionesCortes.ts` (nuevo, puro sin Number/parseFloat) + `scripts/t50-test.mjs` + `db.ts` (v2 aditiva outbox/mapeo, v1 intacta) + `RegistroCortes.tsx` (persist-first con instante único, fallback `activo` con `.filter()`, estimada exacta, banner pendientes por cuenta). Sin backend ni DB tocados. |
-| T51 |  |  |  |
+| T51 | Rojo real: triple failed (acción `crear_corte_v2` desconocida → 409) | Verde: `74 passed` (2 archivos) + `npm run build` OK | DB estable (`bd4c32af…`); `sync.py` (acción v2 + `ResultadoOperacion` con `estado/corte_id/snapshot` aditivos + `_sincronizar_corte_v2` con UUID/modo validados, conflicto → 409) + `useSync.ts` (sender outbox por cuenta con misma UUID, mapping durable; legacy intacto) + `test_sync_roles.py`. Honesto: sin migración 006 (el `resultado` JSON ya porta causa/mapping/snapshot; sin cambio de schema); estados `revision/dependiente` llegan en T52. |
 | T52 |  |  |  |
 | T53 |  |  |  |
 | T54 |  |  |  |

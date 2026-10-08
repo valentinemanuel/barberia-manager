@@ -154,3 +154,91 @@ def test_rol_degradado_offline_rechaza_operacion_no_permitida(client):
     assert por_id["op-ok"]["aceptada"] is True
     assert por_id["op-ok"]["status_code"] == 201
     db.close()
+
+
+# ---------- T51: camino v2 con UUID obligatoria + estados (RF-30/RF-32/RF-57) ----------
+
+def _op_v2(uuid_val, servicio_id, metodo="efectivo", modo="offline"):
+    datos = {"servicio_id": servicio_id, "metodo_pago": metodo, "modo_captura": modo}
+    if uuid_val is not None:
+        datos["operacion_uuid"] = uuid_val
+    return {"id": uuid_val or "sin-uuid", "accion": "crear_corte_v2", "datos": datos}
+
+
+def test_crear_corte_v2_sin_uuid_se_rechaza(client):
+    """T51: v2 exige UUID; legacy `crear_corte` sin UUID sigue intacto."""
+    import uuid as uuid_lib
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barb_v2a", Rol.BARBERO)
+    servicio = _crear_servicio(db)
+    token = _token(client, "barb_v2a")
+    r = client.post(
+        "/api/sync/",
+        headers=_headers(token),
+        json={"operaciones": [_op_v2(None, servicio.id)]},
+    )
+    assert r.status_code == 200
+    resultado = r.json()["resultados"][0]
+    assert resultado["aceptada"] is False
+    assert resultado["status_code"] == 400
+    # Legacy intacto: sin UUID por el camino viejo se acepta
+    r2 = client.post(
+        "/api/sync/",
+        headers=_headers(token),
+        json={"operaciones": [{
+            "id": "op-legacy",
+            "accion": "crear_corte",
+            "datos": {"servicio_id": servicio.id, "metodo_pago": "efectivo"},
+        }]},
+    )
+    assert r2.json()["resultados"][0]["aceptada"] is True
+    db.close()
+
+
+def test_crear_corte_v2_reintento_no_duplica_y_trae_mapping(client):
+    """T51: misma UUID reenviada devuelve el mismo acuse sin crear otro corte."""
+    import uuid as uuid_lib
+    from app.models.corte import Corte
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barb_v2b", Rol.BARBERO)
+    servicio = _crear_servicio(db)
+    token = _token(client, "barb_v2b")
+    uuid_val = str(uuid_lib.uuid4())
+    body = {"operaciones": [_op_v2(uuid_val, servicio.id)]}
+    r1 = client.post("/api/sync/", headers=_headers(token), json=body)
+    r2 = client.post("/api/sync/", headers=_headers(token), json=body)
+    assert r1.json()["resultados"][0]["aceptada"] is True
+    assert r2.json()["resultados"][0]["aceptada"] is True
+    assert r1.json()["resultados"][0]["corte_id"] == r2.json()["resultados"][0]["corte_id"]
+    assert r1.json()["resultados"][0]["estado"] == "aceptada"
+    assert r1.json()["resultados"][0]["snapshot"]["precio"] == "100.00"
+    db2 = TestingSessionLocal()
+    assert db2.query(Corte).count() == 1
+    db2.close()
+    db.close()
+
+
+def test_crear_corte_v2_conflicto_misma_uuid_distinto_payload_409(client):
+    """T51: misma UUID con distinto contenido → 409 sin efecto."""
+    import uuid as uuid_lib
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barb_v2c", Rol.BARBERO)
+    servicio = _crear_servicio(db)
+    token = _token(client, "barb_v2c")
+    uuid_val = str(uuid_lib.uuid4())
+    r1 = client.post(
+        "/api/sync/", headers=_headers(token),
+        json={"operaciones": [_op_v2(uuid_val, servicio.id, metodo="efectivo")]},
+    )
+    assert r1.json()["resultados"][0]["aceptada"] is True
+    r2 = client.post(
+        "/api/sync/", headers=_headers(token),
+        json={"operaciones": [_op_v2(uuid_val, servicio.id, metodo="tarjeta")]},
+    )
+    resultado = r2.json()["resultados"][0]
+    assert resultado["aceptada"] is False
+    assert resultado["status_code"] == 409
+    db.close()
