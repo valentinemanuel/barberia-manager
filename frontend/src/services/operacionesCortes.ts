@@ -144,3 +144,60 @@ export function crearOperacionCorte(args: {
     estado: 'pendiente',
   };
 }
+
+export type ConceptoAbono = 'cliente' | 'comision';
+
+export interface OperacionAbonoNueva {
+  operacionUuid: string;
+  actorId: number;
+  /** UUID del corte original (no un id reasignable): cadena de dependencia. */
+  dependeDe: string;
+  concepto: ConceptoAbono;
+  importeCentavos: number;
+  modoCaptura: ModoCaptura;
+  instanteCambioUtc: string;
+  momentoRealUtc: string;
+  estado: 'pendiente';
+}
+
+/**
+ * Crea un abono encadenado a su corte (RF-37/RF-57, T54). El importe es el
+ * realmente indicado (para `completo`, el precio mostrado al usuario, no un
+ * recálculo posterior); nunca se genera un abono de importe cero.
+ */
+export function crearOperacionAbono(args: {
+  actorId: number;
+  corteUuid: string;
+  concepto: string;
+  importeCentavos: number;
+  modoCaptura: ModoCaptura;
+  ahora: Date;
+}): OperacionAbonoNueva {
+  if (!Number.isSafeInteger(args.actorId) || args.actorId <= 0) {
+    throw new Error('El actor debe ser un id válido');
+  }
+  if (typeof args.corteUuid !== 'string' || args.corteUuid.length === 0) {
+    throw new Error('El abono debe referenciar su corte original');
+  }
+  if (args.concepto !== 'cliente' && args.concepto !== 'comision') {
+    throw new Error('El concepto debe ser cliente o comision');
+  }
+  if (!Number.isSafeInteger(args.importeCentavos) || args.importeCentavos <= 0) {
+    throw new Error('Los centavos deben ser un entero positivo');
+  }
+  if (!(args.ahora instanceof Date) || Number.isNaN(args.ahora.getTime())) {
+    throw new Error('El instante de captura debe ser una fecha válida');
+  }
+  const instante = args.ahora.toISOString();
+  return {
+    operacionUuid: generarUuid(),
+    actorId: args.actorId,
+    dependeDe: args.corteUuid,
+    concepto: args.concepto,
+    importeCentavos: args.importeCentavos,
+    modoCaptura: args.modoCaptura,
+    instanteCambioUtc: instante,
+    momentoRealUtc: instante,
+    estado: 'pendiente',
+  };
+}

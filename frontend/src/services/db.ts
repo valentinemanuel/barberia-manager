@@ -49,6 +49,7 @@ export type EstadoOperacionLocal =
   | 'aceptada'
   | 'rechazada'
   | 'revision'
+  | 'dependiente'
 
 export interface OperacionCorteLocal {
   operacionUuid: string
@@ -66,6 +67,12 @@ export interface OperacionCorteLocal {
   ultimoError?: string
   idServidor?: number
   actualizadoEn: string
+  // Abono encadenado (T54, RF-37/RF-57): solo en filas tipo abono.
+  // Campos opcionales: sin cambio de índices ni versión Dexie.
+  tipo?: 'corte' | 'abono'
+  concepto?: 'cliente' | 'comision'
+  importeCentavos?: number
+  dependeDe?: string
 }
 
 export interface MapeoOperacionLocal {

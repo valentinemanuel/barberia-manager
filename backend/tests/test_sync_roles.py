@@ -305,6 +305,24 @@ def test_abono_offline_reloj_adelantado_a_revision(client):
     db.close()
 
 
+def test_abono_v2_corte_inexistente_404_sin_aplicar(client):
+    """T54 (RF-57): abono a corte inexistente se conserva sin aplicar (404)."""
+    import uuid as uuid_lib
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barb_ab5", Rol.BARBERO)
+    _crear_servicio(db)
+    token = _token(client, "barb_ab5")
+    r = client.post(
+        "/api/sync/", headers=_headers(token),
+        json={"operaciones": [_abono_v2(str(uuid_lib.uuid4()), 9999, importe="10.00")]},
+    )
+    resultado = r.json()["resultados"][0]
+    assert resultado["aceptada"] is False
+    assert resultado["status_code"] == 404
+    db.close()
+
+
 def test_abono_v2_reintento_misma_uuid_no_duplica(client):
     """T52: misma UUID de abono reenviada no crea otro movimiento."""
     import uuid as uuid_lib

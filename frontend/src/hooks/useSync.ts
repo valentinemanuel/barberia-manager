@@ -4,6 +4,7 @@ import { db } from '../services/db'
 import api from '../services/api'
 import { useAuthStore } from '../store/authStore'
 import { esRespuestaVigente, leerSesionNavegador } from '../services/sesion'
+import { centavosAPesosStr } from '../services/operacionesCortes'
 
 export function useSync() {
   const online = useOnlineStatus()
@@ -94,6 +95,82 @@ export function useSync() {
       // que no entran al índice y where('sincronizado').equals(0) devuelve
       // siempre [] (verificado: 0 vs 1 con filter). Sin este filtro, los cortes
       // encolados offline nunca se sincronizan.
+      // Cadena de dependientes (T54, RF-57): abonos encadenados a su corte.
+      // Si el corte fue rechazado, el abono queda `dependiente` conservado
+      // sin aplicar; si el corte aún no sincronizó, se reintenta después.
+      if (actorId !== null) {
+        const abonosPendientes = await db.outboxOperaciones
+          .where('actorId')
+          .equals(actorId)
+          .filter((o) => o.estado === 'pendiente' && o.tipo === 'abono')
+          .toArray()
+        for (const abono of abonosPendientes) {
+          if (!esRespuestaVigente(sesionCapturada, leerSesionNavegador())) {
+            console.warn('Sync: cambió la cuenta a mitad del envío; descarto resultados tardíos.')
+            break
+          }
+          const corteOp = await db.outboxOperaciones.get(abono.dependeDe ?? '')
+          if (!corteOp || corteOp.estado === 'pendiente' || corteOp.estado === 'enviando') {
+            continue
+          }
+          if (corteOp.estado !== 'aceptada' || corteOp.idServidor == null) {
+            await db.outboxOperaciones.update(abono.operacionUuid, {
+              estado: 'dependiente',
+              ultimoError: 'corte_rechazado',
+              actualizadoEn: new Date().toISOString(),
+            })
+            continue
+          }
+          try {
+            await db.outboxOperaciones.update(abono.operacionUuid, {
+              estado: 'enviando',
+              intento: abono.intento + 1,
+            })
+            const respuesta = await api.post('/sync/', {
+              operaciones: [{
+                id: abono.operacionUuid,
+                accion: 'registrar_abono_v2',
+                datos: {
+                  operacion_uuid: abono.operacionUuid,
+                  corte_id: corteOp.idServidor,
+                  concepto: abono.concepto ?? 'cliente',
+                  importe: centavosAPesosStr(abono.importeCentavos ?? 0),
+                  metodo_pago: abono.metodoPago,
+                  modo_captura: abono.modoCaptura,
+                  momento_real: abono.momentoReal,
+                },
+              }],
+            })
+            const resultado = (respuesta.data.resultados ?? [])[0]
+            if (!resultado) continue
+            if (!esRespuestaVigente(sesionCapturada, leerSesionNavegador())) {
+              console.warn('Sync: cambió la cuenta a mitad del envío; descarto resultados tardíos.')
+              break
+            }
+            if (resultado.aceptada) {
+              await db.outboxOperaciones.update(abono.operacionUuid, {
+                estado: 'aceptada',
+                actualizadoEn: new Date().toISOString(),
+              })
+            } else if (resultado.estado === 'revision') {
+              await db.outboxOperaciones.update(abono.operacionUuid, {
+                estado: 'revision',
+                ultimoError: resultado.motivo ?? 'revision',
+                actualizadoEn: new Date().toISOString(),
+              })
+            } else {
+              await db.outboxOperaciones.update(abono.operacionUuid, {
+                estado: 'dependiente',
+                ultimoError: resultado.motivo ?? 'rechazado',
+                actualizadoEn: new Date().toISOString(),
+              })
+            }
+          } catch (error) {
+            console.error('Error sincronizando abono dependiente:', error)
+          }
+        }
+      }
+
       // Camino legacy (T53, RF-33): solo pendientes atribuibles a la cuenta
       // actual. Las filas v1 se atribuyen por `barbero_id` (sin autor
       // distinto: limitación documentada); las v2 viajan por outbox (arriba).
