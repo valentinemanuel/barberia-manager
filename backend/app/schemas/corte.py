@@ -1,11 +1,12 @@
 from datetime import datetime
 from decimal import Decimal
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Literal, Optional
 from uuid import UUID
 import enum
 
 from app.models.corte import MetodoPago
+from app.models.finanzas_corte import ConceptoMovimiento
 
 
 class CorteBase(BaseModel):
@@ -41,12 +42,65 @@ class CorteEditar(BaseModel):
     # Motivo obligatorio para admin sobre bloqueado (RF-26); se exige pero
     # su journal completo corresponde al paquete de auditoría.
     motivo: Optional[str] = None
+    # Concurrencia LWW (paquete 10, RF-36): instante de la edición y bases
+    # vistas por el cliente (informativas; la resolución es por instante).
+    instante_cambio: Optional[datetime] = None
+    bases: Optional[dict] = None
+    operacion_uuid: Optional[str] = None
+    # Reasignación y fecha (paquete 10, RF-42/RF-47): solo admin con motivo.
+    barbero_id: Optional[int] = None
+    momento_real: Optional[datetime] = None
 
 
 class CorteAnular(BaseModel):
     """Anulación (paquete 7, RF-27): motivo obligatorio para admin en bloqueado."""
 
     motivo: Optional[str] = None
+
+
+class IntervencionResolver(BaseModel):
+    """Resolución manual de una intervención RF-40 (paquete 10)."""
+
+    decision: Literal["aplicar", "descartar"]
+    motivo: str
+
+
+class IntervencionResponse(BaseModel):
+    uuid: str
+    corte_id: int
+    accion: str
+    estado: str
+    causa: str
+
+    class Config:
+        from_attributes = True
+
+
+class JustificanteResponse(BaseModel):
+    """Justificante propio post-reasignación (paquete 10, RF-48).
+
+    Sin titular del corte ni datos de otros profesionales.
+    """
+
+    corte_id: int
+    uuid: str
+    concepto: str
+    tipo: Optional[str] = None
+    importe: Decimal
+    motivo: Optional[str] = None
+    momento_real: Optional[datetime] = None
+    registrado_en: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class EvidenciaFinanciera(BaseModel):
+    """Completar o marcar información histórica (paquete 10, RF-54)."""
+
+    concepto: ConceptoMovimiento
+    conocido: bool
+    evidencia: str
 
 
 class CorteResponse(BaseModel):
@@ -86,3 +140,13 @@ class CortePersonal(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class CorteEdicionResponse(CortePersonal):
+    """Respuesta de edición (paquete 10, RF-36): resultado por unidad.
+
+    Aditiva sobre el contrato personal: cada unidad pedida informa
+    `aplicada` u `omitida` (omitida nunca es silenciosa).
+    """
+
+    unidades: dict = {}

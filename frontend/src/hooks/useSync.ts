@@ -179,6 +179,88 @@ export function useSync() {
         }
       }
 
+      // Ediciones/anulaciones encadenadas (T72, RF-36/RF-40): requieren el
+      // corte aceptado (mapping a id servidor); si sigue pendiente se
+      // reintentan después. La intervención (202) queda en `revision`.
+      if (actorId !== null) {
+        const edicionesPendientes = await db.outboxOperaciones
+          .where('actorId')
+          .equals(actorId)
+          .filter((o) => o.estado === 'pendiente' && (o.tipo === 'edicion' || o.tipo === 'anulacion'))
+          .toArray()
+        for (const edicion of edicionesPendientes) {
+          if (!esRespuestaVigente(sesionCapturada, leerSesionNavegador())) {
+            console.warn('Sync: cambió la cuenta a mitad del envío; descarto resultados tardíos.')
+            break
+          }
+          // Id conocido (T72, desde historial) o cadena por corteUuid (T54).
+          let idServidor = edicion.corteIdServidor ?? null
+          if (idServidor == null) {
+            const corteOp = await db.outboxOperaciones
+              .filter((o) => o.corteUuid === edicion.dependeDe && o.tipo !== 'abono' && o.tipo !== 'edicion' && o.tipo !== 'anulacion')
+              .first()
+            if (!corteOp || corteOp.estado === 'pendiente' || corteOp.estado === 'enviando') {
+              continue
+            }
+            if (corteOp.estado !== 'aceptada' || corteOp.idServidor == null) {
+              await db.outboxOperaciones.update(edicion.operacionUuid, {
+                estado: 'dependiente',
+                ultimoError: 'corte_rechazado',
+                actualizadoEn: new Date().toISOString(),
+              })
+              continue
+            }
+            idServidor = corteOp.idServidor
+          }
+          try {
+            await db.outboxOperaciones.update(edicion.operacionUuid, {
+              estado: 'enviando',
+              intento: edicion.intento + 1,
+            })
+            const esAnulacion = edicion.tipo === 'anulacion'
+            const respuesta = await api.post('/sync/', {
+              operaciones: [{
+                id: edicion.operacionUuid,
+                accion: esAnulacion ? 'anular_corte_v2' : 'editar_corte_v2',
+                datos: {
+                  operacion_uuid: edicion.operacionUuid,
+                  corte_id: idServidor,
+                  cambios: edicion.cambios ?? {},
+                  instante_cambio: edicion.instanteCambio,
+                  modo_captura: edicion.modoCaptura,
+                },
+              }],
+            })
+            const resultado = (respuesta.data.resultados ?? [])[0]
+            if (!resultado) continue
+            if (!esRespuestaVigente(sesionCapturada, leerSesionNavegador())) {
+              console.warn('Sync: cambió la cuenta a mitad del envío; descarto resultados tardíos.')
+              break
+            }
+            if (resultado.aceptada) {
+              await db.outboxOperaciones.update(edicion.operacionUuid, {
+                estado: 'aceptada',
+                actualizadoEn: new Date().toISOString(),
+              })
+            } else if (resultado.estado === 'pendiente_intervencion' || resultado.estado === 'revision') {
+              await db.outboxOperaciones.update(edicion.operacionUuid, {
+                estado: 'revision',
+                ultimoError: resultado.motivo ?? 'intervencion',
+                actualizadoEn: new Date().toISOString(),
+              })
+            } else {
+              await db.outboxOperaciones.update(edicion.operacionUuid, {
+                estado: 'dependiente',
+                ultimoError: resultado.motivo ?? 'rechazado',
+                actualizadoEn: new Date().toISOString(),
+              })
+            }
+          } catch (error) {
+            console.error('Error sincronizando edición dependiente:', error)
+          }
+        }
+      }
+
       // Camino legacy (T53, RF-33): solo pendientes atribuibles a la cuenta
       // actual. Las filas v1 se atribuyen por `barbero_id` (sin autor
       // distinto: limitación documentada); las v2 viajan por outbox (arriba).

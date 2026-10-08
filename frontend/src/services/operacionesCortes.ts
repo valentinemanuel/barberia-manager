@@ -201,3 +201,93 @@ export function crearOperacionAbono(args: {
     estado: 'pendiente',
   };
 }
+
+export interface CambiosEdicion {
+  servicio_id?: number;
+  metodo_pago?: string;
+}
+
+export interface OperacionEdicionNueva {
+  operacionUuid: string;
+  actorId: number;
+  /** UUID del corte original (no un id reasignable). */
+  dependeDe: string;
+  accion: 'editar' | 'anular';
+  cambios: CambiosEdicion;
+  modoCaptura: ModoCaptura;
+  instanteCambioUtc: string;
+  estado: 'pendiente';
+}
+
+function validarBaseEdicion(actorId: number, corteUuid: string, ahora: Date): string {
+  if (!Number.isSafeInteger(actorId) || actorId <= 0) {
+    throw new Error('El actor debe ser un id válido');
+  }
+  if (typeof corteUuid !== 'string' || corteUuid.length === 0) {
+    throw new Error('La edición debe referenciar su corte original');
+  }
+  if (!(ahora instanceof Date) || Number.isNaN(ahora.getTime())) {
+    throw new Error('El instante de captura debe ser una fecha válida');
+  }
+  return ahora.toISOString();
+}
+
+/**
+ * Encola una edición (RF-36/RF-40, T72): instante único de captura para
+ * LWW y cambios explícitos por unidad. Sin cambios → error.
+ */
+export function crearOperacionEdicion(args: {
+  actorId: number;
+  corteUuid: string;
+  cambios: CambiosEdicion;
+  modoCaptura: ModoCaptura;
+  ahora: Date;
+}): OperacionEdicionNueva {
+  const instante = validarBaseEdicion(args.actorId, args.corteUuid, args.ahora);
+  const cambios: CambiosEdicion = {};
+  if (args.cambios.servicio_id !== undefined) {
+    if (!Number.isSafeInteger(args.cambios.servicio_id) || args.cambios.servicio_id <= 0) {
+      throw new Error('El servicio debe ser un id válido');
+    }
+    cambios.servicio_id = args.cambios.servicio_id;
+  }
+  if (args.cambios.metodo_pago !== undefined) {
+    if (!['efectivo', 'tarjeta', 'transferencia'].includes(args.cambios.metodo_pago)) {
+      throw new Error('El método de pago no es válido');
+    }
+    cambios.metodo_pago = args.cambios.metodo_pago;
+  }
+  if (Object.keys(cambios).length === 0) {
+    throw new Error('La edición exige cambios explícitos');
+  }
+  return {
+    operacionUuid: generarUuid(),
+    actorId: args.actorId,
+    dependeDe: args.corteUuid,
+    accion: 'editar',
+    cambios,
+    modoCaptura: args.modoCaptura,
+    instanteCambioUtc: instante,
+    estado: 'pendiente',
+  };
+}
+
+/** Encola una anulación terminal (RF-36: prevalece, no reactiva). */
+export function crearOperacionAnulacion(args: {
+  actorId: number;
+  corteUuid: string;
+  modoCaptura: ModoCaptura;
+  ahora: Date;
+}): OperacionEdicionNueva {
+  const instante = validarBaseEdicion(args.actorId, args.corteUuid, args.ahora);
+  return {
+    operacionUuid: generarUuid(),
+    actorId: args.actorId,
+    dependeDe: args.corteUuid,
+    accion: 'anular',
+    cambios: {},
+    modoCaptura: args.modoCaptura,
+    instanteCambioUtc: instante,
+    estado: 'pendiente',
+  };
+}
