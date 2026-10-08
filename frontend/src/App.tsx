@@ -4,6 +4,7 @@ import Login from './pages/Login'
 import DashboardAdmin from './pages/DashboardAdmin'
 import DashboardBarbero from './pages/DashboardBarbero'
 import RegistroCortes from './pages/RegistroCortes'
+import MisSaldos from './pages/MisSaldos'
 import GestionUsuarios from './pages/GestionUsuarios'
 import GestionServicios from './pages/GestionServicios'
 import GestionProductos from './pages/GestionProductos'
@@ -25,6 +26,7 @@ function App() {
           usuario.rol === 'admin' ? <DashboardAdmin /> : <DashboardBarbero />
         } />
         <Route path="/cortes" element={<RegistroCortes />} />
+        <Route path="/saldos" element={<MisSaldos />} />
         <Route path="/usuarios" element={
           usuario.rol === 'admin' ? <GestionUsuarios /> : <Navigate to="/" />
         } />

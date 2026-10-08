@@ -23,10 +23,16 @@ class ConceptoMovimiento(str, enum.Enum):
 
 
 class TipoMovimiento(str, enum.Enum):
-    """Tipo de movimiento. Compensaciones y devoluciones corresponden
-    a paquetes posteriores (RF-43); aquí solo abonos ordinarios."""
+    """Tipo de movimiento (paquete 9, RF-41/RF-43 parcial).
+
+    ABONO: abono ordinario positivo. COMPENSACION: corrección
+    administrativa con motivo y referencia al original (puede restar).
+    DEVOLUCION: devolución explícita de dinero real (resta del neto).
+    """
 
     ABONO = "abono"
+    COMPENSACION = "compensacion"
+    DEVOLUCION = "devolucion"
 
 
 class EstadoMovimiento(str, enum.Enum):
@@ -65,3 +71,8 @@ class MovimientoCorte(Base):
     # Revisión offline (paquete 8, T52): nulos legacy = aceptados.
     estado = Column(Enum(EstadoMovimiento), nullable=True)
     motivo_revision = Column(String(64), nullable=True)
+    # Correctivos (paquete 9, T58): referencia al original, motivo y
+    # evidencia. Solo en filas COMPENSACION/DEVOLUCION; nulos = abono común.
+    original_uuid = Column(String(36), nullable=True)
+    motivo = Column(String(255), nullable=True)
+    evidencia = Column(String(255), nullable=True)

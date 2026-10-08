@@ -727,3 +727,102 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 ### Cierre del paquete 8 (revisión independiente)
 
 `sdd-reviewer`: veredicto **APROBADO PAQUETE 8** con 4 P1 corregidos por la revisión y re-verificados por el coordinador: (1) `abs(desvío)>300` marcaba reloj el atraso normal de sync → solo adelantado (RF-51) + test nuevo; (2) el lote v2 enviaba abonos como `crear_corte_v2` → excluye `tipo==='abono'`; (3) cadena rota (`get(dependeDe)` por PK jamás hallaba al padre) → `filter(corteUuid)`; (4) doble escritura offline (outbox + fila legacy duplicaba el corte al sincronizar) → solo outbox + `revision` 202 del corte marcada `revision` (no `rechazada`). P1 reportado sin tocar (no bloquea el merge): puentes float en el camino nuevo (`toFixed/Math.round` + conversor global `Number()`; el cliente typed 002 queda para el paquete UX) — deuda registrada. P2 para futuro: `String(9)` vs `Enum` en PostgreSQL, `window.alert` legacy, 202 sin journal servidor, POST online sin UUID. Re-verificación: backend 299 (82+117+167+1 nuevo), frontend 4 node + build OK, hash DB idéntico. El cierre no autoriza paquete 9 ni declara la spec implementada.
+
+---
+
+## Paquete 9 — Resolución de revisiones + compensaciones/devoluciones + excedentes
+
+Estado: **tareas redactadas, pendientes de aprobación para implementar**. Paquetes 1–8 cerrados, no rehacer.
+
+Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2026-10-08). No se autoriza implementación por esta redacción.
+
+### Decisiones del paquete (respuestas del usuario)
+
+- Capacidad de devolución: **por concepto** (dinero reconocido − devoluciones, lock por corte+concepto). Sin FuenteEfectivo por movimiento.
+- Revisión: **bloquea igual** (toda fila, incluida revisión, bloquea edición/anulación; sin cambios en `corte_bloqueado`).
+- Motivos: **visibles al barbero en lo propio** (trazabilidad; detector T17 extendido, sin datos ajenos).
+- Frontend: **UI completa** (saldos con excedente/revisión/motivos visibles al titular).
+- Anulado: **efecto al anular** (la anulación escribe cancelación de obligaciones + neto→excedente, trazable en journal).
+
+### Alcance y límites
+
+- Ocho tareas de 20–30 minutos: estimación 3–4 horas.
+- Cobertura **parcial**: RF-21 (excedente visible por concepto + revisión aparte), RF-38/RF-53 (resolución admin: íntegro hasta saldo + resto excedente, o compensatoria si erróneo), RF-41 (correctivos diferenciados; devolución ≤ dinero abonado no devuelto), RF-43 (compensatorio con motivo + referencia, sin borrar original), RF-46 (anulados: solo ajustes/devoluciones admin; obligaciones canceladas + neto→excedente al anular). No afirma pull RF-55, LWW RF-36, RF-40, jornadas/imputación RF-45/49/50, reasignación RF-47/48, ni cumplimiento integral.
+- Archivos que podrá tocar este paquete cuando se autorice implementar:
+  - M `backend/app/models/finanzas_corte.py` (solo `COMPENSACION`/`DEVOLUCION` en `TipoMovimiento` + columnas nullable `original_uuid`/`motivo`/`evidencia`; sin reescribir filas).
+  - C `backend/alembic/versions/007_correctivos_corte.py` (solo ADD COLUMN nullable con guard, patrón 004/006).
+  - M `backend/app/services/movimiento_corte_service.py` (solo `neto/excedente` por concepto + `resolver_revision` + `registrar_compensacion` + `registrar_devolucion` + `capacidad_devolucion`; `restante` conserva semántica; revisión sigue sin mover saldos).
+  - M `backend/app/routers/movimientos_corte.py` (solo endpoints admin resolución/compensación/devolución + 409 anulado bifurcado ordinario vs correctivo + `estado/motivo/excedente` en respuestas).
+  - M `backend/app/services/edicion_corte_service.py` (solo efecto al anular con dinero conocido + journal; sin reactivación).
+  - M `backend/app/routers/cortes.py` (solo journal de anulación con efecto; regularizado como en paquete 6: requerido por T62).
+  - M `backend/app/models/auditoria_corte.py` (solo 3 acciones correctivas del Enum; requerido por T59–T61).
+  - M `backend/tests/test_cortes.py` + M `backend/tests/test_sync_roles.py` (solo tests nuevos).
+  - M `frontend/src/pages/*` + `frontend/src/services/*` (solo vista de saldos con excedente/revisión/motivos + tipos; sin rediseño).
+- Prohibido: pull historial/cobertura, LWW, RF-40, jornadas/cierres/imputación, reasignación, bóveda, `create_all` en import, `pytest tests/` global, cualquier `upgrade` contra base real.
+- Precaución DB real vigente: hash de `backend/barberia.db` antes/después, pytest solo por archivo, upgrades solo TEMP.
+
+### Tareas en orden de dependencia
+
+- [x] **T58. Modelo correctivo + migración 007 + excedente en saldos.** RF-21/RF-41 (parciales).
+  - Dependencias: ninguna dentro del paquete.
+  - Tests primero: `history` muestra `007`; `upgrade` en TEMP legacy+filas agrega columnas preservando datos; `saldos` expone `excedente` por concepto (`neto−obligación` cuando sobra) sin cambiar `restante/abonado` legacy; revisión sigue sin mover saldos.
+  - Implementar: `COMPENSACION`/`DEVOLUCION` en el Enum + `original_uuid`/`motivo`/`evidencia` nullable; `neto = abonos + compensaciones − devoluciones` (solo aceptados; revisión/rechazados aparte).
+  - Hecho cuando: migración verificada en TEMP (vacía/legacy/fila/repetir) y saldos con excedente en verde.
+
+- [x] **T59. Resolución admin de revisiones.** RF-38/RF-53 (parciales).
+  - Dependencias: T58.
+  - Tests primero: revisión por exceso con dinero real íntegro → resuelta: saldo cubierto hasta obligación + resto `excedente`, importe original intacto (sin recorte); revisión errónea → compensatoria con motivo referenciando el original; replay misma resolución no duplica efecto.
+  - Implementar: `POST .../revisiones/{uuid}/resolver` (solo admin, misma UoW: original + compensación/evidencia atómicos, sin commit intermedio).
+  - Hecho cuando: ambas ramas en verde con importes exactos y sin mutar hash/UUID originales.
+
+- [x] **T60. Compensación administrativa.** RF-43 (parcial).
+  - Dependencias: T58.
+  - Tests primero: admin corrige movimiento erróneo → compensatorio append-only con motivo + `original_uuid`, original intacto; la compensación no cuenta como salida física (capacidad de devolución no crece por signo contable sin evidencia de dinero real).
+  - Implementar: `registrar_compensacion` + endpoint admin; validación de concepto y signo contra el original.
+  - Hecho cuando: tests en verde y el original nunca se edita ni borra.
+
+- [x] **T61. Devolución explícita con capacidad por concepto.** RF-41/RF-43 (parciales).
+  - Dependencias: T58–T60.
+  - Tests primero: devolución ≤ dinero reconocido no devuelto → 201 y reduce capacidad; devolución superior → 400; dos devoluciones concurrentes sobre capacidad exacta → solo una consume (test de carrera con reintentos); reintento misma UUID no consume dos veces.
+  - Implementar: `capacidad = reconocido − devoluciones` por corte+concepto con lock mínimo (serializar por corte+concepto) + `unique(operacion)` en la devolución.
+  - Hecho cuando: carrera y límites en verde sin doble consumo.
+
+- [x] **T62. Anulados: correctivos admin + efecto al anular.** RF-46 (parcial).
+  - Dependencias: T58–T61.
+  - Tests primero: abono ordinario al anulado → 409 (regresión); compensación/devolución admin al anulado → 201 trazable; anular con dinero conocido escribe cancelación de obligaciones + `neto→excedente` visible en saldos (sin devolución automática, sin reactivación).
+  - Implementar: bifurcar 409 (ordinario vs correctivo admin) + efecto al anular con journal (`anular_corte` extendido).
+  - Hecho cuando: tests en verde y ningún abono ordinario entra al anulado.
+
+- [x] **T63. Motivos visibles en lo propio + privacidad.** RF-14/RF-15 (regresión), RNF-5.
+  - Dependencias: T59–T62.
+  - Tests primero: barbero ve motivos de correctivos sobre sus cortes (trazabilidad); ajeno → 404 idéntico; detector T17 extendido (sin `parte_barberia`/costos/datos ajenos en respuestas nuevas); admin conserva todo.
+  - Implementar: `motivo` en DTOs propios (personal + movimientos + saldos); nada de otros profesionales.
+  - Hecho cuando: verdes sin filtraciones y sin cambios al contrato admin.
+
+- [x] **T64. UI de saldos con excedente/revisión/motivos.** RF-12/RF-21 (parciales), RNF-4.
+  - Dependencias: T58–T63.
+  - Tests primero (node, patrón T50–T55): codec/estados de la vista (excedente separado de restante, revisión aparte con causa e importe, motivos propios visibles); `npm run build` en verde.
+  - Implementar: vista de saldos del titular con excedente/revisión/motivos + tipos; sin rediseño general.
+  - Hecho cuando: tests node + build en verde, sin `any` ni float nuevo.
+
+- [x] **T65. Regresión total y cierre del paquete.** RF-21/RF-38/RF-41/RF-43/RF-46/RF-53 (parciales), RNF-3/RNF-5/RNF-6.
+  - Dependencias: T58–T64.
+  - Ejecutar por archivo las suites tocadas + suite aislada del paquete 1 + tests node + `npm run build`, todo en verde, con precaución DB real + gate de migración registrados (ningún `upgrade` contra base real ejecutado).
+  - Registrar comandos/resultados en la evidencia de abajo y actualizar el estado sin declarar implementada la spec completa. El cierre requiere revisión independiente (`sdd-reviewer`) y no autoriza paquete 10.
+  - Hecho cuando: todo lo anterior en verde, solo los archivos autorizados cambiaron y queda solicitada la revisión de cierre.
+
+### Cierre del paquete 9 (revisión independiente)
+
+`sdd-reviewer`: veredicto **APROBADO PAQUETE 9** sin tocar archivos. Re-ejecutó todo en verde (147 + 167), migración 007 en TEMP con guards, hash DB idéntico, constitución y códigos exactos. Aritmética verificada: compensatoria +real (T59) vs −ajuste (T60) coherentes; capacidad sin doble conteo; `real` íntegro conforme RF-53. P2 no bloqueantes registrados: (1) `erroneo` con real>0 re-ejecutable sin UUID duplica (requiere decisión de spec); (2) compensación positiva sin evidencia exigida infla capacidad; (3) replay `real` → 409 en vez de acuse (cliente debe tratarlo como terminal); (4) anu
+...[truncated 737 chars]
+
+| Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
+|---|---|---|---|
+| T58 | Rojo real: triple `AttributeError` (COMPENSACION/DEVOLUCION/excedente inexistentes) + `history` en 006 | Verde: `109 passed` (3 archivos) + `007` en TEMP (legacy + 1 fila: columnas agregadas, fila preservada) | DB estable (`bd4c32af…`); `finanzas_corte.py` (tipos + `original_uuid/motivo/evidencia` nullable) + `007_correctivos_corte.py` + `movimiento_corte_service.py` (`neto` = abonos + compensaciones con signo − devoluciones, solo aceptados; `excedente` aditivo, `restante` intacto) + `SaldoConcepto.excedente` (default, compat). |
+| T59 | Rojo real: triple 404 (sin ruta resolver) | Verde: `112 passed` (3 archivos) | DB estable; `movimiento_corte_service.py` (`resolver_revision` + `RevisionResuelta`: real acepta original intacto; erróneo crea compensatoria +real con referencia o solo traza si 0; motivo obligatorio) + `movimientos_corte.py` (POST resolver solo admin 403, journal RESOLUCION misma UoW, `tipo/motivo/original_uuid/evidencia` en respuesta) + `auditoria_corte.py` (acciones correctivas) + `test_cortes.py`. Sin mutar importes ni UUID originales. |
+| T60 | Rojo real: doble 404 (sin ruta compensaciones) | Verde: `91 passed` (2 archivos) | DB estable; `movimiento_corte_service.py` (`registrar_compensacion` + `OriginalAusente`: motivo obligatorio, importe con signo no nulo, referencia exigida, idempotente por UUID) + `movimientos_corte.py` (POST solo admin 403, journal COMPENSACION, helper `_respuesta_movimiento` que elimina triplicación) + `test_cortes.py`. Original intacto; correctivo ya vale sobre anulados (base T62). |
+| T61 | Rojo real: triple 404 (sin ruta devoluciones) | Verde: `94 passed` (2 archivos, incluye carrera con threads) | DB estable; `movimiento_corte_service.py` (`capacidad_devolucion` = neto no negativo + `registrar_devolucion` con motivo/capacidad/idempotencia + `_candado_devolucion` de proceso) + `movimientos_corte.py` (POST solo admin, UoW con candado + journal con capacidad real, `rollback` en error) + `test_cortes.py` (límite, carrera 201+400 determinista, replay, permisos). Multi-worker/PG exigirá locks de fila (deuda explícita). |
+| T62 | Rojo real: `restante` seguía 70 tras anular (sin cancelación); correctivos al anulado en verde inicial (endpoints sin check, honesto) | Verde: `119 passed` (3 archivos) | DB estable; `movimiento_corte_service.py` (anulado ⇒ obligaciones 0, neto→excedente; historial intacto) + `cortes.py` (journal ANULACION con `obligaciones_canceladas` + netos/excedentes) + `test_cortes.py`. Sin nueva migración: la escritura del efecto es la fila de journal (terminal, sin reapertura). Ordinario al anulado sigue 409 (POST y sync). |
+| T63 | Rojo real: doble 404 (sin listado); ajuste honesto: mi test de devolución olvidó el abono previo (capacidad 0 → 400 correcto) | Verde: `98 passed` (2 archivos) | DB estable; `movimientos_corte.py` (GET listado propio/gestión con motivos, 404 ajeno idéntico, revisiones con causa) + `test_cortes.py` (motivos propios visibles, detector T17 extendido a listado/saldos/correctivos limpio, admin intacto). Sin exponer autor ni datos ajenos. |
+| T64 | Rojo real: `ROJO T64: falta src/services/saldosVista.ts` (exit 1) | Verde: `VERDE T64` + `npm run build` OK (exit 0, SW generado) | Solo frontend: `saldosVista.ts` (puro: excedente aparte, revisión con causa, motivos propios) + `scripts/t64-test.mjs` + `MisSaldos.tsx` (nueva: historial propio + saldos/movimientos por corte, sin totales del negocio) + ruta `/saldos` + nav. Sin `any`; display con `formatearMoneda` existente (sin aritmética float nueva). |
+| T65 | Sin rojo: solo verificación final, sin cambios productivos nuevos | Verde: `125 + 2 + 8 + 10 + 2` por archivo (toda la suite backend) + `167 passed` aislada + 5 node frontend + `npm run build` OK (exit 0) | DB estable en baseline (`bd4c32af…`); ningún `upgrade` contra base real ejecutado (007 solo TEMP legacy+filas); `git status` solo este documento. Paquete 9 completo en cobertura parcial, sin declarar spec implementada; cierre pendiente de revisión independiente (`sdd-reviewer`), que no autoriza paquete 10. |
