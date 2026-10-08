@@ -13,6 +13,7 @@ from app.schemas.corte import (
     CorteAnular,
     CorteCrear,
     CorteEditar,
+    CorteEdicionResponse,
     CorteResponse,
     CortePersonal,
 )
@@ -207,7 +208,7 @@ def registrar_corte(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.patch("/{corte_id}", response_model=CortePersonal)
+@router.patch("/{corte_id}", response_model=CorteEdicionResponse)
 def editar_corte_endpoint(
     corte_id: int,
     datos: CorteEditar,
@@ -216,8 +217,10 @@ def editar_corte_endpoint(
 ):
     """Edita servicio y/o método de un corte propio no bloqueado (RF-22/42).
 
-    El bloqueo y la anulación se verifican en T44/T45; aquí titularidad y
-    recálculo. El admin opera sobre cualquier corte (gestión).
+    LWW por unidades (paquete 10, RF-36): el instante decide por unidad;
+    la anulación terminal prevalece siempre (409). El bloqueo y la
+    anulación se verifican en T44/T45; aquí titularidad y recálculo.
+    El admin opera sobre cualquier corte (gestión).
     """
     corte = db.query(Corte).filter(Corte.id == corte_id).first()
     if not corte:
@@ -241,19 +244,29 @@ def editar_corte_endpoint(
         )
     try:
         antes = snapshot_corte(corte)
-        corte = aplicar_edicion(
+        instante = datos.instante_cambio
+        if instante is not None and instante.tzinfo is not None:
+            instante = instante.astimezone(timezone.utc).replace(tzinfo=None)
+        corte, unidades = aplicar_edicion(
             db,
             corte=corte,
             servicio_id=datos.servicio_id,
             metodo=datos.metodo_pago,
+            instante=instante,
         )
+        despues = snapshot_corte(corte)
+        despues["unidades"] = unidades
+        if datos.operacion_uuid:
+            despues["operacion_uuid"] = datos.operacion_uuid
+        if datos.bases:
+            despues["bases_vistas"] = datos.bases
         auditar_cambio(
             db,
             corte_id=corte.id,
             actor_id=actor.id,
             accion=AccionAuditoriaCorte.EDICION,
             antes=antes,
-            despues=snapshot_corte(corte),
+            despues=despues,
             motivo=datos.motivo,
         )
     except NoEncontrado as e:
@@ -262,7 +275,9 @@ def editar_corte_endpoint(
         raise HTTPException(status_code=400, detail=str(e))
     db.commit()
     db.refresh(corte)
-    return corte
+    respuesta = CorteEdicionResponse.model_validate(corte)
+    respuesta.unidades = unidades
+    return respuesta
 
 
 @router.post("/{corte_id}/anular", response_model=CortePersonal)

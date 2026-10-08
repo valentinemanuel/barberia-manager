@@ -870,7 +870,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - Implementar: columnas nullable + `version` default 1; sin tocar `fecha` ni snapshots.
   - Hecho cuando: escenarios TEMP verificados y prohibido aplicar contra base real.
 
-- [ ] **T67. LWW en PATCH online.** RF-36/RF-42 (parciales).
+- [x] **T67. LWW en PATCH online.** RF-36/RF-42 (parciales).
   - Dependencias: T66.
   - Tests primero: dos ediciones concurrentes de método (instantes distintos) → gana la tardía; método + servicio concurrentes → ambas se conservan (unidades distintas); dos del grupo financiero → ganador íntegro (sin mezclar precio de uno con % de otro); edición con instante anterior al ganador → omitida con causa; anulado + edición tardía → 409 (terminal prevalece).
   - Implementar: `instante_cambio` + `bases` por unidad en PATCH; grupo financiero atómico; respuesta con unidades aplicadas/omitidas; journal con `operacion_uuid`.
@@ -917,7 +917,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 | Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
 |---|---|---|---|
 | T66 | Rojo real: `AttributeError` (version/relojes/profesional inexistentes) + `history` en 007 | Verde: `122 passed` (3 archivos) + `008` en TEMP (legacy + filas: 6 columnas + backfill version 1 y profesional solo comisionada; repetir no-op) | DB estable; `corte.py` (version + 3 relojes + conocido nullable) + `finanzas_corte.py` (profesional_id) + `008` (ADD nullable + backfill solo nulos) + abonos/compensaciones/devoluciones nuevas con titular (cliente NULL). `fecha` intacta. |
-| T67 |  |  |  |
+| T67 | Rojo real: doble failed (`unidades` ausente; grupo mezclable); anulación prevalece ya en verde (T45) | Verde: `125 passed` (3 archivos) | DB estable; `schemas/corte.py` (`instante/bases/operacion_uuid` + `CorteEdicionResponse` aditivo) + `edicion_corte_service.py` (LWW por unidad, grupo atómico, version+1 por cambio aplicado) + `cortes.py` (journal con unidades/op/bases). Resolución solo por instante (bases informativas en journal); empate aplica al último. |
 | T68 |  |  |  |
 | T69 |  |  |  |
 | T70 |  |  |  |

@@ -81,37 +81,58 @@ def editar_corte(
     corte: Corte,
     servicio_id: int | None = None,
     metodo: MetodoPago | None = None,
-) -> Corte:
+    instante: datetime | None = None,
+) -> tuple[Corte, dict]:
     """Edita servicio y/o método de un corte no bloqueado ni anulado.
 
-    El bloqueo/anulación se verifican en el router (T44/T45); aquí solo
-    titularidad resuelta afuera, recálculo RF-42 y validación canónica.
+    LWW por unidades (paquete 10, RF-36 parcial): método y finanzas
+    (servicio/precio/porcentaje/reparto como grupo atómico) compiten cada
+    una con su reloj; gana el instante mayor o igual, la perdedora se
+    omite con causa (nunca silenciosa). El bloqueo/anulación se verifican
+    en el router (T44/T45); aquí solo titularidad resuelta afuera,
+    recálculo RF-42 y validación canónica.
     """
+    from datetime import datetime as datetime_lww
+
     if servicio_id is None and metodo is None:
         raise ValueError("Sin cambios para aplicar")
+    ahora = instante or datetime_lww.utcnow()
+    unidades: dict[str, str] = {}
     if servicio_id is not None and servicio_id != corte.servicio_id:
-        servicio = (
-            db.query(Servicio).filter(Servicio.id == servicio_id).first()
-        )
-        if servicio is None:
-            raise NoEncontrado("Servicio no encontrado")
-        if not servicio.activo:
-            raise ValueError("Servicio inactivo")
-        titular = db.query(Usuario).filter(Usuario.id == corte.barbero_id).first()
-        if titular is None:
-            raise NoEncontrado("Barbero no encontrado")
-        try:
-            parte_barbero, parte_barberia = calcular_partes(
-                servicio.precio, titular.porcentaje_ganancia
+        if corte.unidad_finanzas_ts is None or ahora >= corte.unidad_finanzas_ts:
+            servicio = (
+                db.query(Servicio).filter(Servicio.id == servicio_id).first()
             )
-        except (TypeError, ValueError) as error:
-            raise ValueError(str(error)) from error
-        corte.servicio_id = servicio.id
-        corte.precio = servicio.precio
-        corte.porcentaje_barbero = titular.porcentaje_ganancia
-        corte.parte_barbero = parte_barbero
-        corte.parte_barberia = parte_barberia
+            if servicio is None:
+                raise NoEncontrado("Servicio no encontrado")
+            if not servicio.activo:
+                raise ValueError("Servicio inactivo")
+            titular = db.query(Usuario).filter(Usuario.id == corte.barbero_id).first()
+            if titular is None:
+                raise NoEncontrado("Barbero no encontrado")
+            try:
+                parte_barbero, parte_barberia = calcular_partes(
+                    servicio.precio, titular.porcentaje_ganancia
+                )
+            except (TypeError, ValueError) as error:
+                raise ValueError(str(error)) from error
+            corte.servicio_id = servicio.id
+            corte.precio = servicio.precio
+            corte.porcentaje_barbero = titular.porcentaje_ganancia
+            corte.parte_barbero = parte_barbero
+            corte.parte_barberia = parte_barberia
+            corte.unidad_finanzas_ts = ahora
+            unidades["finanzas"] = "aplicada"
+        else:
+            unidades["finanzas"] = "omitida"
     if metodo is not None:
-        corte.metodo_pago = metodo
+        if corte.unidad_metodo_ts is None or ahora >= corte.unidad_metodo_ts:
+            corte.metodo_pago = metodo
+            corte.unidad_metodo_ts = ahora
+            unidades["metodo"] = "aplicada"
+        else:
+            unidades["metodo"] = "omitida"
+    if any(v == "aplicada" for v in unidades.values()):
+        corte.version = (corte.version or 0) + 1
     db.flush()
-    return corte
+    return corte, unidades

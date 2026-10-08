@@ -41,6 +41,11 @@ class CorteEditar(BaseModel):
     # Motivo obligatorio para admin sobre bloqueado (RF-26); se exige pero
     # su journal completo corresponde al paquete de auditoría.
     motivo: Optional[str] = None
+    # Concurrencia LWW (paquete 10, RF-36): instante de la edición y bases
+    # vistas por el cliente (informativas; la resolución es por instante).
+    instante_cambio: Optional[datetime] = None
+    bases: Optional[dict] = None
+    operacion_uuid: Optional[str] = None
 
 
 class CorteAnular(BaseModel):
@@ -86,3 +91,13 @@ class CortePersonal(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class CorteEdicionResponse(CortePersonal):
+    """Respuesta de edición (paquete 10, RF-36): resultado por unidad.
+
+    Aditiva sobre el contrato personal: cada unidad pedida informa
+    `aplicada` u `omitida` (omitida nunca es silenciosa).
+    """
+
+    unidades: dict = {}

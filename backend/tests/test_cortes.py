@@ -2167,3 +2167,71 @@ def test_lww_relojes_y_profesional_por_defecto(client):
     assert por_concepto["cliente"].profesional_id is None
     assert por_concepto["comision"].profesional_id == corte.barbero_id
     db.close()
+
+
+def _segundo_servicio(db, nombre, precio):
+    from decimal import Decimal as DecimalT67
+
+    db.add(Servicio(nombre=nombre, descripcion="segundo", precio=DecimalT67(precio), duracion_minutos=30, activo=True))
+    db.commit()
+    return db.query(Servicio).filter(Servicio.nombre == nombre).first().id
+
+
+def test_lww_metodo_gana_tardia_y_anterior_omitida(client):
+    """T67 (RF-36): instante anterior al ganador → omitida con causa."""
+    corte_id = _corte_para_abonos(client, "barbero_t67")
+    token = _token_para(client, "barbero_t67")
+    auth = {"Authorization": f"Bearer {token}"}
+    r1 = client.patch(f"/api/cortes/{corte_id}", json={
+        "metodo_pago": "tarjeta", "instante_cambio": "2026-10-08T10:00:00",
+    }, headers=auth)
+    assert r1.status_code == 200
+    assert r1.json()["metodo_pago"] == "tarjeta"
+    assert r1.json()["unidades"]["metodo"] == "aplicada"
+    r2 = client.patch(f"/api/cortes/{corte_id}", json={
+        "metodo_pago": "transferencia", "instante_cambio": "2026-10-08T09:00:00",
+    }, headers=auth)
+    assert r2.status_code == 200
+    assert r2.json()["metodo_pago"] == "tarjeta"
+    assert r2.json()["unidades"]["metodo"] == "omitida"
+
+
+def test_lww_unidades_independientes_y_grupo_integro(client):
+    """T67: método y finanzas no se pisan; el grupo financiero no se mezcla."""
+    from decimal import Decimal as DecimalT67b
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t67b", DecimalT67b("50"), DecimalT67b("100.00"))
+    servicio_b = _segundo_servicio(db, "Servicio T67B", "200.00")
+    servicio_a = db.query(Servicio).filter(Servicio.nombre == "Servicio T7").first().id
+    db.close()
+    token = _token_para(client, "barbero_t67b")
+    auth = {"Authorization": f"Bearer {token}"}
+    corte_id = client.post("/api/cortes/", json={"servicio_id": servicio_a, "metodo_pago": "efectivo"}, headers=auth).json()["id"]
+    r = client.patch(f"/api/cortes/{corte_id}", json={
+        "servicio_id": servicio_b, "instante_cambio": "2026-10-08T10:00:00",
+    }, headers=auth)
+    assert r.json()["precio"] == "200.00"
+    assert r.json()["unidades"]["finanzas"] == "aplicada"
+    r = client.patch(f"/api/cortes/{corte_id}", json={
+        "metodo_pago": "tarjeta", "instante_cambio": "2026-10-08T09:00:00",
+    }, headers=auth)
+    assert r.json()["metodo_pago"] == "tarjeta"
+    assert r.json()["precio"] == "200.00"
+    r = client.patch(f"/api/cortes/{corte_id}", json={
+        "servicio_id": servicio_a, "instante_cambio": "2026-10-08T09:30:00",
+    }, headers=auth)
+    assert r.json()["precio"] == "200.00"
+    assert r.json()["unidades"]["finanzas"] == "omitida"
+
+
+def test_anulacion_prevalece_sobre_edicion_tardia(client):
+    """T67 (RF-36): anulado + edición con instante futuro → 409, sin reactivar."""
+    corte_id = _corte_para_abonos(client, "barbero_t67c")
+    token = _token_para(client, "barbero_t67c")
+    auth = {"Authorization": f"Bearer {token}"}
+    assert client.post(f"/api/cortes/{corte_id}/anular", json={}, headers=auth).status_code == 200
+    r = client.patch(f"/api/cortes/{corte_id}", json={
+        "metodo_pago": "tarjeta", "instante_cambio": "2026-10-08T12:00:00",
+    }, headers=auth)
+    assert r.status_code == 409
