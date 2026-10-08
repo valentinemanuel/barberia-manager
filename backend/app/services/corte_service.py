@@ -14,15 +14,22 @@ def crear_corte(
     servicio_id: int,
     metodo_pago: str,
     destinatario: Usuario | None = None,
-    momento_real: datetime | None = None
+    momento_real: datetime | None = None,
+    aceptar_inactivo: bool = False,
 ) -> Corte:
     """Crea un registro de corte con cálculo automático de porcentajes.
 
     El reparto usa precio actual del servicio y porcentaje actual del
     destinatario (actor por defecto, otro barbero si lo indica un admin).
+    `aceptar_inactivo` solo lo usa la sincronización (RF-31): un servicio
+    desactivado después del registro offline no invalida el corte; el
+    registro online nuevo sigue exigiendo servicios activos (RF-56).
     """
     destino = destinatario or barbero
-    servicio = db.query(Servicio).filter(Servicio.id == servicio_id, Servicio.activo == True).first()
+    consulta = db.query(Servicio).filter(Servicio.id == servicio_id)
+    if not aceptar_inactivo:
+        consulta = consulta.filter(Servicio.activo == True)
+    servicio = consulta.first()
     if not servicio:
         raise ValueError("Servicio no encontrado o inactivo")
 

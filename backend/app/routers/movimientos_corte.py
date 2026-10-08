@@ -34,6 +34,9 @@ class MovimientoResponse(BaseModel):
     metodo_pago: MetodoPago
     momento_real: Optional[datetime] = None
     registrado_en: datetime
+    # Revisión offline (paquete 8, T52): aditivos opcionales.
+    estado: Optional[str] = None
+    motivo_revision: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -107,7 +110,10 @@ def crear_movimiento(
         raise HTTPException(status_code=400, detail=str(e))
     db.commit()
     db.refresh(movimiento)
-    return movimiento
+    respuesta = MovimientoResponse.model_validate(movimiento)
+    respuesta.estado = movimiento.estado.value if movimiento.estado else "aceptado"
+    respuesta.motivo_revision = movimiento.motivo_revision
+    return respuesta
 
 
 @router.get("/{corte_id}/saldos", response_model=SaldosResponse)

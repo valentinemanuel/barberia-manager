@@ -29,6 +29,17 @@ class TipoMovimiento(str, enum.Enum):
     ABONO = "abono"
 
 
+class EstadoMovimiento(str, enum.Enum):
+    """Aceptación del movimiento (paquete 8, T52, RF-38/RF-51 parcial).
+
+    `REVISION` conserva el importe real pendiente de decisión admin,
+    sin mover saldos aceptados. Nulos legacy se leen como aceptados.
+    """
+
+    ACEPTADO = "aceptado"
+    REVISION = "revision"
+
+
 class MovimientoCorte(Base):
     """Abono a un corte por concepto (paquete 6, RF-16/RF-17).
 
@@ -51,3 +62,6 @@ class MovimientoCorte(Base):
     metodo_pago = Column(Enum(MetodoPago), nullable=False)
     momento_real = Column(DateTime, nullable=True)
     registrado_en = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # Revisión offline (paquete 8, T52): nulos legacy = aceptados.
+    estado = Column(Enum(EstadoMovimiento), nullable=True)
+    motivo_revision = Column(String(64), nullable=True)
