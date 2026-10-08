@@ -26,7 +26,7 @@ from app.services.edicion_corte_service import (
 )
 from app.models.auditoria_corte import AccionAuditoriaCorte
 from app.services.movimiento_corte_service import corte_bloqueado
-from app.services.movimiento_corte_service import registrar_abono
+from app.services.movimiento_corte_service import registrar_abono, saldos_corte
 from app.models.finanzas_corte import ConceptoMovimiento
 from app.services.operacion_corte_service import (
     ConflictoIdentidad,
@@ -296,13 +296,22 @@ def anular_corte_endpoint(
         )
     antes_anulacion = snapshot_corte(corte)
     corte = aplicar_anulacion(db, corte=corte, actor=actor, motivo=datos.motivo)
+    # Efecto al anular (RF-27/46, T62): obligaciones canceladas y neto
+    # existente como excedente; queda trazado en esta fila de journal.
+    saldos_efecto = saldos_corte(db, corte)
+    despues_anulacion = snapshot_corte(corte)
+    despues_anulacion["obligaciones_canceladas"] = True
+    despues_anulacion["neto_cliente"] = str(saldos_efecto["cliente"]["abonado"])
+    despues_anulacion["excedente_cliente"] = str(saldos_efecto["cliente"]["excedente"])
+    despues_anulacion["neto_comision"] = str(saldos_efecto["comision"]["abonado"])
+    despues_anulacion["excedente_comision"] = str(saldos_efecto["comision"]["excedente"])
     auditar_cambio(
         db,
         corte_id=corte.id,
         actor_id=actor.id,
         accion=AccionAuditoriaCorte.ANULACION,
         antes=antes_anulacion,
-        despues=snapshot_corte(corte),
+        despues=despues_anulacion,
         motivo=datos.motivo,
     )
     db.commit()

@@ -1729,3 +1729,417 @@ def test_resumen_personal_excluye_anulados(client):
         r = client.get(f"/api/cortes/mi/resumen/{ruta}", headers=auth)
         assert r.status_code == 200, ruta
         assert r.json()["total_cortes"] == 1, ruta
+
+
+def _movimiento_directo(db, corte_id, actor_id, concepto, tipo, importe, estado=None):
+    """T58: fila directa (simula estados que la API aún no produce)."""
+    from app.models.corte import MetodoPago as MetodoAbono
+    from app.models.finanzas_corte import MovimientoCorte as MovimientoModelo
+
+    fila = MovimientoModelo(
+        uuid=f"t58-{corte_id}-{concepto}-{tipo}-{importe}",
+        corte_id=corte_id,
+        concepto=concepto,
+        tipo=tipo,
+        importe=Decimal(importe),
+        autor_id=actor_id,
+        metodo_pago=MetodoAbono.EFECTIVO,
+        estado=estado,
+    )
+    db.add(fila)
+    db.commit()
+    return fila
+
+
+def test_saldos_exponen_excedente_sin_cambiar_restante(client):
+    """T58 (RF-21): neto sobre obligación → excedente visible, restante 0."""
+    from app.models.finanzas_corte import (
+        ConceptoMovimiento as ConceptoT58,
+        EstadoMovimiento as EstadoT58,
+        TipoMovimiento as TipoT58,
+    )
+
+    corte_id = _corte_para_abonos(client, "barbero_t58")
+    token = _token_para(client, "barbero_t58")
+    db = TestingSessionLocal()
+    actor_id = db.query(Usuario).filter(Usuario.usuario == "barbero_t58").first().id
+    _movimiento_directo(
+        db, corte_id, actor_id, ConceptoT58.CLIENTE, TipoT58.ABONO, "150.00",
+        EstadoT58.ACEPTADO,
+    )
+    db.close()
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["abonado"] == "150.00"
+    assert saldos["cliente"]["restante"] == "0.00"
+    assert saldos["cliente"]["excedente"] == "50.00"
+
+
+def test_revision_no_mueve_saldos_ni_excedente(client):
+    """T58: la revisión sigue ignorada en saldos (RF-38/RF-53)."""
+    from app.models.finanzas_corte import (
+        ConceptoMovimiento as ConceptoT58b,
+        EstadoMovimiento as EstadoT58b,
+        TipoMovimiento as TipoT58b,
+    )
+
+    corte_id = _corte_para_abonos(client, "barbero_t58b")
+    token = _token_para(client, "barbero_t58b")
+    db = TestingSessionLocal()
+    actor_id = db.query(Usuario).filter(Usuario.usuario == "barbero_t58b").first().id
+    _movimiento_directo(
+        db, corte_id, actor_id, ConceptoT58b.CLIENTE, TipoT58b.ABONO, "150.00",
+        EstadoT58b.REVISION,
+    )
+    db.close()
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["abonado"] == "0.00"
+    assert saldos["cliente"]["restante"] == "100.00"
+    assert saldos["cliente"]["excedente"] == "0.00"
+
+
+def test_compensacion_y_devolucion_mueven_neto(client):
+    """T58 (RF-41/43): compensación con signo y devolución restan del neto."""
+    from app.models.finanzas_corte import (
+        ConceptoMovimiento as ConceptoT58c,
+        EstadoMovimiento as EstadoT58c,
+        TipoMovimiento as TipoT58c,
+    )
+
+    corte_id = _corte_para_abonos(client, "barbero_t58c")
+    token = _token_para(client, "barbero_t58c")
+    db = TestingSessionLocal()
+    actor_id = db.query(Usuario).filter(Usuario.usuario == "barbero_t58c").first().id
+    _movimiento_directo(
+        db, corte_id, actor_id, ConceptoT58c.CLIENTE, TipoT58c.ABONO, "100.00",
+        EstadoT58c.ACEPTADO,
+    )
+    _movimiento_directo(
+        db, corte_id, actor_id, ConceptoT58c.CLIENTE, TipoT58c.COMPENSACION, "-30.00",
+        EstadoT58c.ACEPTADO,
+    )
+    _movimiento_directo(
+        db, corte_id, actor_id, ConceptoT58c.CLIENTE, TipoT58c.DEVOLUCION, "20.00",
+        EstadoT58c.ACEPTADO,
+    )
+    db.close()
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["abonado"] == "50.00"
+    assert saldos["cliente"]["restante"] == "50.00"
+    assert saldos["cliente"]["excedente"] == "0.00"
+
+
+def _revision_por_exceso(client, login, importe="150.00"):
+    """T59: genera una revisión vía sync offline (exceso sobre 100)."""
+    import uuid as uuid_lib
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, f"{login}_adm", Rol.ADMIN)
+    db.close()
+    corte_id = _corte_para_abonos(client, login)
+    token = _token_para(client, login)
+    uuid_val = str(uuid_lib.uuid4())
+    r = client.post(
+        "/api/sync/",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"operaciones": [{
+            "id": uuid_val,
+            "accion": "registrar_abono_v2",
+            "datos": {
+                "operacion_uuid": uuid_val,
+                "corte_id": corte_id,
+                "concepto": "cliente",
+                "importe": importe,
+                "metodo_pago": "efectivo",
+                "modo_captura": "offline",
+            },
+        }]},
+    )
+    assert r.json()["resultados"][0]["estado"] == "revision"
+    return corte_id, uuid_val
+
+
+def _resolver(client, admin_login, corte_id, mov_uuid, body):
+    return client.post(
+        f"/api/cortes/{corte_id}/revisiones/{mov_uuid}/resolver",
+        json=body,
+        headers={"Authorization": f"Bearer {_token_para(client, admin_login)}"},
+    )
+
+
+def test_resolver_revision_dinero_real_cubre_y_excedente(client):
+    """T59 (RF-53): real íntegro → acepta original sin recorte; resto excedente."""
+    corte_id, mov_uuid = _revision_por_exceso(client, "barbero_t59")
+    admin = "barbero_t59_adm"
+    r = _resolver(client, admin, corte_id, mov_uuid, {"veredicto": "real", "motivo": "verificado en caja"})
+    assert r.status_code == 200
+    assert r.json()["estado"] == "aceptado"
+    assert r.json()["importe"] == "150.00"
+    saldos = _saldos(client, _token_para(client, "barbero_t59"), corte_id).json()
+    assert saldos["cliente"]["abonado"] == "150.00"
+    assert saldos["cliente"]["restante"] == "0.00"
+    assert saldos["cliente"]["excedente"] == "50.00"
+
+
+def test_resolver_revision_erronea_crea_compensatoria(client):
+    """T59 (RF-53): erróneo con real 50 → compensatoria +50; original intacto."""
+    corte_id, mov_uuid = _revision_por_exceso(client, "barbero_t59b")
+    admin = "barbero_t59b_adm"
+    r = _resolver(
+        client, admin, corte_id, mov_uuid,
+        {"veredicto": "erroneo", "motivo": "duplicado con otro cobro", "importe_real": "50.00"},
+    )
+    assert r.status_code == 200
+    assert r.json()["tipo"] == "compensacion"
+    assert r.json()["importe"] == "50.00"
+    assert r.json()["original_uuid"] == mov_uuid
+    saldos = _saldos(client, _token_para(client, "barbero_t59b"), corte_id).json()
+    assert saldos["cliente"]["abonado"] == "50.00"
+    assert saldos["cliente"]["restante"] == "50.00"
+
+
+def test_resolver_exige_motivo_y_admin(client):
+    """T59: sin motivo → 400; barbero → 403; ya resuelta → 409."""
+    corte_id, mov_uuid = _revision_por_exceso(client, "barbero_t59c")
+    admin = "barbero_t59c_adm"
+    assert _resolver(
+        client, admin, corte_id, mov_uuid, {"veredicto": "real", "motivo": ""}
+    ).status_code == 400
+    assert _resolver(
+        client, "barbero_t59c", corte_id, mov_uuid, {"veredicto": "real", "motivo": "x"}
+    ).status_code == 403
+    assert _resolver(
+        client, admin, corte_id, mov_uuid, {"veredicto": "real", "motivo": "ok"}
+    ).status_code == 200
+    assert _resolver(
+        client, admin, corte_id, mov_uuid, {"veredicto": "real", "motivo": "otra vez"}
+    ).status_code == 409
+
+
+def _compensar(client, admin_login, corte_id, body):
+    return client.post(
+        f"/api/cortes/{corte_id}/compensaciones",
+        json=body,
+        headers={"Authorization": f"Bearer {_token_para(client, admin_login)}"},
+    )
+
+
+def test_compensacion_corrige_sin_borrar_original(client):
+    """T60 (RF-43): compensatoria −30 con motivo y referencia; original intacto."""
+    from app.models.finanzas_corte import MovimientoCorte as MovimientoT60
+
+    corte_id = _corte_para_abonos(client, "barbero_t60")
+    token = _token_para(client, "barbero_t60")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t60", Rol.ADMIN)
+    db.close()
+    original_uuid = _abonar(client, token, corte_id, "cliente", 100).json()["uuid"]
+    r = _compensar(client, "admin_t60", corte_id, {
+        "concepto": "cliente",
+        "importe": "-30.00",
+        "motivo": "cobro duplicado parcial",
+        "original_uuid": original_uuid,
+    })
+    assert r.status_code == 201
+    assert r.json()["tipo"] == "compensacion"
+    assert r.json()["original_uuid"] == original_uuid
+    db = TestingSessionLocal()
+    original = db.query(MovimientoT60).filter(MovimientoT60.uuid == original_uuid).first()
+    assert original.importe == Decimal("100.00")
+    db.close()
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["abonado"] == "70.00"
+    assert saldos["cliente"]["restante"] == "30.00"
+
+
+def test_compensacion_exige_motivo_original_y_admin(client):
+    """T60: sin motivo → 400; original inexistente → 404; barbero → 403; cero → 400."""
+    corte_id = _corte_para_abonos(client, "barbero_t60b")
+    token = _token_para(client, "barbero_t60b")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t60b", Rol.ADMIN)
+    db.close()
+    base = {"concepto": "cliente", "importe": "-10.00", "original_uuid": "inexistente"}
+    assert _compensar(client, "admin_t60b", corte_id, {**base, "motivo": ""}).status_code == 400
+    assert _compensar(
+        client, "admin_t60b", corte_id, {**base, "motivo": "m"}
+    ).status_code == 404
+    assert _compensar(
+        client, "barbero_t60b", corte_id, {**base, "motivo": "m"}
+    ).status_code == 403
+    original_uuid = _abonar(client, token, corte_id, "cliente", 50).json()["uuid"]
+    assert _compensar(client, "admin_t60b", corte_id, {
+        "concepto": "cliente", "importe": "0.00",
+        "motivo": "cero", "original_uuid": original_uuid,
+    }).status_code == 400
+
+
+def _devolver(client, admin_login, corte_id, body):
+    return client.post(
+        f"/api/cortes/{corte_id}/devoluciones",
+        json=body,
+        headers={"Authorization": f"Bearer {_token_para(client, admin_login)}"},
+    )
+
+
+def test_devolucion_limite_y_capacidad(client):
+    """T61 (RF-41): dentro de capacidad → 201 y reduce neto; exceso → 400."""
+    corte_id = _corte_para_abonos(client, "barbero_t61")
+    token = _token_para(client, "barbero_t61")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t61", Rol.ADMIN)
+    db.close()
+    assert _abonar(client, token, corte_id, "cliente", 100).status_code == 201
+    r = _devolver(client, "admin_t61", corte_id, {
+        "concepto": "cliente", "importe": "30.00", "motivo": "cobro de más",
+    })
+    assert r.status_code == 201
+    assert r.json()["tipo"] == "devolucion"
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["abonado"] == "70.00"
+    assert _devolver(client, "admin_t61", corte_id, {
+        "concepto": "cliente", "importe": "80.00", "motivo": "exceso",
+    }).status_code == 400
+
+
+def test_devolucion_concurrente_solo_una_consume(client):
+    """T61: dos devoluciones de 30 sobre capacidad 40 → una 201 y otra 400."""
+    import concurrent.futures
+
+    corte_id = _corte_para_abonos(client, "barbero_t61b")
+    token = _token_para(client, "barbero_t61b")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t61b", Rol.ADMIN)
+    db.close()
+    assert _abonar(client, token, corte_id, "cliente", 100).status_code == 201
+    assert _devolver(client, "admin_t61b", corte_id, {
+        "concepto": "cliente", "importe": "60.00", "motivo": "primera",
+    }).status_code == 201
+    cuerpo = {"concepto": "cliente", "importe": "30.00", "motivo": "carrera"}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        estados = sorted(
+            pool.map(lambda _: _devolver(client, "admin_t61b", corte_id, cuerpo).status_code, range(2))
+        )
+    assert estados == [201, 400]
+
+
+def test_devolucion_reintento_y_permisos(client):
+    """T61: misma UUID no duplica; sin motivo → 400; barbero → 403."""
+    import uuid as uuid_lib
+    from app.models.finanzas_corte import MovimientoCorte as MovimientoT61
+
+    corte_id = _corte_para_abonos(client, "barbero_t61c")
+    token = _token_para(client, "barbero_t61c")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t61c", Rol.ADMIN)
+    db.close()
+    assert _abonar(client, token, corte_id, "cliente", 100).status_code == 201
+    uuid_val = str(uuid_lib.uuid4())
+    cuerpo = {
+        "concepto": "cliente", "importe": "10.00", "motivo": "ajuste",
+        "operacion_uuid": uuid_val,
+    }
+    assert _devolver(client, "admin_t61c", corte_id, cuerpo).status_code == 201
+    assert _devolver(client, "admin_t61c", corte_id, cuerpo).status_code == 201
+    db = TestingSessionLocal()
+    assert db.query(MovimientoT61).filter(MovimientoT61.uuid == uuid_val).count() == 1
+    db.close()
+    assert _devolver(client, "admin_t61c", corte_id, {
+        "concepto": "cliente", "importe": "5.00", "motivo": "",
+    }).status_code == 400
+    assert _devolver(client, "barbero_t61c", corte_id, {
+        "concepto": "cliente", "importe": "5.00", "motivo": "m",
+    }).status_code == 403
+
+
+def _anular_como_admin(client, admin_login, corte_id, motivo="anulacion T62"):
+    return _anular_corte(client, _token_para(client, admin_login), corte_id, motivo)
+
+
+def test_correctivos_admin_al_anulado_201(client):
+    """T62 (RF-46): ordinario al anulado → 409; compensación/devolución admin → 201."""
+    corte_id = _corte_para_abonos(client, "barbero_t62")
+    token = _token_para(client, "barbero_t62")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t62", Rol.ADMIN)
+    db.close()
+    assert _abonar(client, token, corte_id, "cliente", 30).status_code == 201
+    original_uuid = _abonar(client, token, corte_id, "comision", 10).json()["uuid"]
+    assert _anular_como_admin(client, "admin_t62", corte_id).status_code == 200
+    assert _abonar(client, token, corte_id, "cliente", 10).status_code == 409
+    assert _compensar(client, "admin_t62", corte_id, {
+        "concepto": "cliente", "importe": "-5.00",
+        "motivo": "ajuste anulado", "original_uuid": original_uuid,
+    }).status_code == 201
+    assert _devolver(client, "admin_t62", corte_id, {
+        "concepto": "cliente", "importe": "5.00", "motivo": "excedente anulado",
+    }).status_code == 201
+
+
+def test_anular_cancela_obligaciones_y_neto_a_excedente(client):
+    """T62 (RF-27/46): al anular con 30/100, restante 0 y excedente 30."""
+    from app.models.auditoria_corte import AuditoriaCorte as AuditoriaT62
+
+    corte_id = _corte_para_abonos(client, "barbero_t62b")
+    token = _token_para(client, "barbero_t62b")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t62b", Rol.ADMIN)
+    db.close()
+    assert _abonar(client, token, corte_id, "cliente", 30).status_code == 201
+    assert _anular_como_admin(client, "admin_t62b", corte_id).status_code == 200
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["abonado"] == "30.00"
+    assert saldos["cliente"]["restante"] == "0.00"
+    assert saldos["cliente"]["excedente"] == "30.00"
+    db = TestingSessionLocal()
+    fila = db.query(AuditoriaT62).filter(AuditoriaT62.corte_id == corte_id).all()
+    assert any(
+        (r.despues or {}).get("obligaciones_canceladas") is True for r in fila
+    )
+    db.close()
+
+
+def _movimientos_de(client, token, corte_id):
+    return client.get(
+        f"/api/cortes/{corte_id}/movimientos",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+
+def test_barbero_ve_motivos_en_lo_propio(client):
+    """T63: motivos de correctivos propios visibles; sin datos del negocio."""
+    corte_id = _corte_para_abonos(client, "barbero_t63")
+    token = _token_para(client, "barbero_t63")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t63", Rol.ADMIN)
+    db.close()
+    original_uuid = _abonar(client, token, corte_id, "cliente", 100).json()["uuid"]
+    assert _compensar(client, "admin_t63", corte_id, {
+        "concepto": "cliente", "importe": "-20.00",
+        "motivo": "cobro duplicado", "original_uuid": original_uuid,
+    }).status_code == 201
+    r = _movimientos_de(client, token, corte_id)
+    assert r.status_code == 200
+    motivos = [m["motivo"] for m in r.json()]
+    assert "cobro duplicado" in motivos
+    assert _sin_campos_prohibidos(r.json()) == []
+
+
+def test_movimientos_ajeno_404_y_detector_extendido(client):
+    """T63 (RF-14/RNF-5): ajeno → 404 idéntico; detector limpio en saldos y correctivos."""
+    from app.models.usuario import Rol as RolT63
+
+    corte_id = _corte_para_abonos(client, "barbero_t63b")
+    token = _token_para(client, "barbero_t63b")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barbero_t63c", RolT63.BARBERO)
+    _crear_usuario(db, "admin_t63b", RolT63.ADMIN)
+    db.close()
+    assert _movimientos_de(client, _token_para(client, "barbero_t63c"), corte_id).status_code == 404
+    assert _movimientos_de(client, _token_para(client, "admin_t63b"), corte_id).status_code == 200
+    assert _sin_campos_prohibidos(_saldos(client, token, corte_id).json()) == []
+    assert _abonar(client, token, corte_id, "cliente", 100).status_code == 201
+    r = _devolver(client, "admin_t63b", corte_id, {
+        "concepto": "cliente", "importe": "10.00", "motivo": "devolución menor",
+    })
+    assert r.status_code == 201
+    assert _sin_campos_prohibidos(r.json()) == []

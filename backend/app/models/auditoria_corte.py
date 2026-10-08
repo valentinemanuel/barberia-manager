@@ -21,6 +21,10 @@ class AccionAuditoriaCorte(str, enum.Enum):
 
     EDICION = "edicion"
     ANULACION = "anulacion"
+    # Correctivos monetarios (paquete 9, RF-43/RF-53 parcial).
+    RESOLUCION = "resolucion"
+    COMPENSACION = "compensacion"
+    DEVOLUCION = "devolucion"
 
 
 class AuditoriaCorte(Base):

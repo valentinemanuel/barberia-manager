@@ -4,6 +4,7 @@ import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard,
   Scissors,
+  Receipt,
   Users,
   ClipboardList,
   Package,
@@ -41,6 +42,7 @@ export default function Layout({ children }: LayoutProps) {
     const base: Enlace[] = [
       { ruta: '/', nombre: 'Inicio', icono: <LayoutDashboard size={18} /> },
       { ruta: '/cortes', nombre: 'Cortes', icono: <Scissors size={18} /> },
+      { ruta: '/saldos', nombre: 'Saldos', icono: <Receipt size={18} /> },
     ]
 
     if (usuario?.rol === 'admin') {

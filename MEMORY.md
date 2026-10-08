@@ -151,6 +151,11 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 - Deuda no bloqueante registrada: puentes float en el camino nuevo (`toFixed`/`Math.round` + conversor global `Number()`); el cliente typed 002 queda para el paquete UX. P2: `String(9)` vs `Enum` en PostgreSQL, `window.alert` legacy, 202 sin journal, POST online sin UUID.
 - No autoriza paquete 9 ni declara la spec implementada.
 
+## Spec 002 — paquete 9 implementado y revisado (2026-10-08)
+- T58–T65 en verde + `sdd-reviewer`: **APROBADO PAQUETE 9** sin correcciones (re-ejecutó 147 + 167 en verde; aritmética y códigos verificados). `barberia.db` estable (`bd4c32af…`).
+- P2 no bloqueantes (ver cierre en tasks): erroneo re-ejecutable sin UUID, compensación positiva sin evidencia, replay real→409, estado pagado en anulado-sin-dinero, concepto vs original sin validar, deuda float-display heredada.
+- No autoriza paquete 10 ni declara la spec implementada.
+
 ## Recuperación documental (2026-10-05)
 - Recuperado el contenido útil de `b211ee5` en una rama nueva desde `dev`, sin cherry-pick ni reescritura de la rama histórica `feat/mcp-config-y-offline`.
 - Conservados el estado y los pendientes actuales; no se recupera la afirmación antigua de que todos los tests están completos.
