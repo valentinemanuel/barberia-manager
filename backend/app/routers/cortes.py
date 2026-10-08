@@ -244,6 +244,26 @@ def editar_corte_endpoint(
             status_code=400,
             detail="Corregir un corte bloqueado exige motivo",
         )
+    if datos.barbero_id is not None and actor.rol != Rol.ADMIN:
+        raise HTTPException(status_code=403, detail="Solo un admin reasigna cortes")
+    if datos.barbero_id is not None and not datos.motivo:
+        raise HTTPException(
+            status_code=400, detail="Reasignar un corte exige motivo"
+        )
+    if datos.momento_real is not None and actor.rol != Rol.ADMIN:
+        raise HTTPException(status_code=400, detail="Solo un admin corrige el momento real")
+    momento = datos.momento_real
+    if momento is not None:
+        if momento.tzinfo is not None:
+            momento = momento.astimezone(timezone.utc).replace(tzinfo=None)
+        if momento > datetime.utcnow():
+            raise HTTPException(
+                status_code=400, detail="El momento real no puede ser futuro"
+            )
+        if not datos.motivo:
+            raise HTTPException(
+                status_code=400, detail="Corregir el momento real exige motivo"
+            )
     try:
         antes = snapshot_corte(corte)
         instante = datos.instante_cambio
@@ -255,6 +275,8 @@ def editar_corte_endpoint(
             servicio_id=datos.servicio_id,
             metodo=datos.metodo_pago,
             instante=instante,
+            nuevo_barbero_id=datos.barbero_id,
+            momento_real=momento,
         )
         despues = snapshot_corte(corte)
         despues["unidades"] = unidades

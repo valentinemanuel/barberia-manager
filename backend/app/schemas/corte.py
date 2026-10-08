@@ -46,6 +46,9 @@ class CorteEditar(BaseModel):
     instante_cambio: Optional[datetime] = None
     bases: Optional[dict] = None
     operacion_uuid: Optional[str] = None
+    # Reasignación y fecha (paquete 10, RF-42/RF-47): solo admin con motivo.
+    barbero_id: Optional[int] = None
+    momento_real: Optional[datetime] = None
 
 
 class CorteAnular(BaseModel):

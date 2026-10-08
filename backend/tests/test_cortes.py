@@ -2235,3 +2235,79 @@ def test_anulacion_prevalece_sobre_edicion_tardia(client):
         "metodo_pago": "tarjeta", "instante_cambio": "2026-10-08T12:00:00",
     }, headers=auth)
     assert r.status_code == 409
+
+
+def db_id(login):
+    db = TestingSessionLocal()
+    uid = db.query(Usuario).filter(Usuario.usuario == login).first().id
+    db.close()
+    return uid
+
+
+def test_reasignar_conserva_precio_y_aplica_porcentaje_nuevo(client):
+    """T69 (RF-47): precio actual del servicio + % actual del nuevo profesional."""
+    from decimal import Decimal as DecimalT69b
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t69a", DecimalT69b("50"), DecimalT69b("200.00"))
+    barbero_b = _crear_usuario(db, "barbero_t69b", Rol.BARBERO)
+    barbero_b.porcentaje_ganancia = DecimalT69b("30")
+    db.commit()
+    _crear_usuario(db, "admin_t69", Rol.ADMIN)
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+    token_a = _token_para(client, "barbero_t69a")
+    corte_id = client.post("/api/cortes/", json={"servicio_id": servicio_id, "metodo_pago": "efectivo"},
+                           headers={"Authorization": f"Bearer {token_a}"}).json()["id"]
+    nuevo_id = db_id("barbero_t69b")
+    r = client.patch(f"/api/cortes/{corte_id}", json={
+        "barbero_id": nuevo_id,
+        "motivo": "reasignación por ausentismo",
+    }, headers={"Authorization": f"Bearer {_token_para(client, 'admin_t69')}"})
+    assert r.status_code == 200
+    assert r.json()["precio"] == "200.00"
+    assert r.json()["porcentaje_barbero"] == "30.00"
+    assert r.json()["parte_barbero"] == "60.00"
+    assert r.json()["barbero_id"] == nuevo_id
+
+
+def test_reasignar_exige_motivo_y_admin(client):
+    """T69: sin motivo → 400; barbero → 403; momento futuro admin → 400; momento barbero → 400."""
+    corte_id = _corte_para_abonos(client, "barbero_t69c")
+    token = _token_para(client, "barbero_t69c")
+    auth = {"Authorization": f"Bearer {token}"}
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t69c", Rol.ADMIN)
+    otro_id = db.query(Usuario).filter(Usuario.usuario == "barbero_t69c").first().id
+    db.close()
+    auth_admin = {"Authorization": f"Bearer {_token_para(client, 'admin_t69c')}"}
+    assert client.patch(f"/api/cortes/{corte_id}", json={"barbero_id": otro_id}, headers=auth_admin).status_code == 400
+    assert client.patch(f"/api/cortes/{corte_id}", json={"barbero_id": otro_id, "motivo": "m"}, headers=auth).status_code == 403
+    assert client.patch(f"/api/cortes/{corte_id}", json={"momento_real": "2030-01-01T10:00:00", "motivo": "m"}, headers=auth_admin).status_code == 400
+    assert client.patch(f"/api/cortes/{corte_id}", json={"momento_real": "2020-01-01T10:00:00"}, headers=auth).status_code == 400
+
+
+def test_pagos_previos_no_se_trasladan_al_nuevo(client):
+    """T69 (RF-47): la comisión del nuevo parte de su propio neto."""
+    from decimal import Decimal as DecimalT69d
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t69d", DecimalT69d("50"), DecimalT69d("100.00"))
+    b = _crear_usuario(db, "barbero_t69e", Rol.BARBERO)
+    b.porcentaje_ganancia = DecimalT69d("50")
+    db.commit()
+    _crear_usuario(db, "admin_t69d", Rol.ADMIN)
+    servicio_id = db.query(Servicio).first().id
+    nuevo_id = db.query(Usuario).filter(Usuario.usuario == "barbero_t69e").first().id
+    db.close()
+    token_d = _token_para(client, "barbero_t69d")
+    corte_id = client.post("/api/cortes/", json={"servicio_id": servicio_id, "metodo_pago": "efectivo"},
+                           headers={"Authorization": f"Bearer {token_d}"}).json()["id"]
+    assert _abonar(client, token_d, corte_id, "comision", 20).status_code == 201
+    r = client.patch(f"/api/cortes/{corte_id}", json={
+        "barbero_id": nuevo_id, "motivo": "reasignación",
+    }, headers={"Authorization": f"Bearer {_token_para(client, 'admin_t69d')}"})
+    assert r.status_code == 200
+    saldos = _saldos(client, _token_para(client, "barbero_t69e"), corte_id).json()
+    assert saldos["comision"]["abonado"] == "0.00"
+    assert saldos["comision"]["restante"] == "50.00"
