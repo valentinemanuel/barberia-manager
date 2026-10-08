@@ -675,7 +675,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - Implementar: `sync.py` exige UUID en camino v2 (legacy sin UUID intacto) + pasa `modo/hash` al ejecutor; estados `aceptada/rechazada/revision/dependiente_sin_aplicar` mínimos con causa.
   - Hecho cuando: push v2 en verde, legacy sin UUID no cambia de comportamiento, sin LWW.
 
-- [ ] **T52. Push de abonos offline + exceso/reloj a revisión.** RF-38/RF-51 (parciales), RF-57.
+- [x] **T52. Push de abonos offline + exceso/reloj a revisión.** RF-38/RF-51 (parciales), RF-57.
   - Dependencias: T51.
   - Tests primero: abono offline que supera saldo definitivo → 200 con `estado=revision`, conserva importe real, no reduce saldo aceptado; `momento_automático >5min` vs servidor → revisión con original conservado; abono online en exceso → rechazo directo (regresión RF-41).
   - Implementar: `movimientos_corte.py` acepta `operacion_uuid` + `origen offline` + `momento_real`; exceso/reloj offline → fila en revisión (sin aplicar saldo); online mantiene rechazo.
@@ -717,7 +717,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 |---|---|---|---|
 | T50 | Rojo real: `ROJO T50: falta src/services/operacionesCortes.ts` (exit 1) + asserts `sin Number()` ajustados a falsos positivos (comentarios y `Number(bigint)`) | Verde: `VERDE T50` (node, codec + HALF_UP + UUID + instante único) + `npm run build` OK (tsc + vite, sw generado) | Solo frontend: `operacionesCortes.ts` (nuevo, puro sin Number/parseFloat) + `scripts/t50-test.mjs` + `db.ts` (v2 aditiva outbox/mapeo, v1 intacta) + `RegistroCortes.tsx` (persist-first con instante único, fallback `activo` con `.filter()`, estimada exacta, banner pendientes por cuenta). Sin backend ni DB tocados. |
 | T51 | Rojo real: triple failed (acción `crear_corte_v2` desconocida → 409) | Verde: `74 passed` (2 archivos) + `npm run build` OK | DB estable (`bd4c32af…`); `sync.py` (acción v2 + `ResultadoOperacion` con `estado/corte_id/snapshot` aditivos + `_sincronizar_corte_v2` con UUID/modo validados, conflicto → 409) + `useSync.ts` (sender outbox por cuenta con misma UUID, mapping durable; legacy intacto) + `test_sync_roles.py`. Honesto: sin migración 006 (el `resultado` JSON ya porta causa/mapping/snapshot; sin cambio de schema); estados `revision/dependiente` llegan en T52. |
-| T52 |  |  |  |
+| T52 | Rojo real: triple failed (acción `registrar_abono_v2` desconocida → 409); reparado al paso un test T51 pisado por el insert (def restaurada, verificado) | Verde: `101 passed` (3 archivos) + migración `006` en TEMP (legacy + 1 fila: columnas agregadas, fila preservada) | DB estable (`bd4c32af…`); `finanzas_corte.py` (`EstadoMovimiento` + columnas nullable, nulo = aceptado) + `006_revision_abono.py` + `movimiento_corte_service.py` (offline: exceso → `exceso`, \|desvío\| >300s → `reloj`, sin mover saldos; saldos solo aceptados) + `movimientos_corte.py` (estado visible) + `sync.py` (`registrar_abono_v2`, 202 revisión / 404 idéntico / 409 anulado). Sin frontend en esta tarea (outbox de abonos en T54). |
 | T53 |  |  |  |
 | T54 |  |  |  |
 | T55 |  |  |  |

@@ -15,6 +15,7 @@ from app.models.operacion_corte import (
 from app.models.finanzas_corte import (
     MovimientoCorte,
     ConceptoMovimiento,
+    EstadoMovimiento,
     TipoMovimiento,
 )
 from app.models.auditoria_corte import AuditoriaCorte, AccionAuditoriaCorte
@@ -35,6 +36,7 @@ __all__ = [
     "ModoCaptura",
     "MovimientoCorte",
     "ConceptoMovimiento",
+    "EstadoMovimiento",
     "TipoMovimiento",
     "AuditoriaCorte",
     "AccionAuditoriaCorte",

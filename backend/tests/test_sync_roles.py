@@ -220,6 +220,115 @@ def test_crear_corte_v2_reintento_no_duplica_y_trae_mapping(client):
     db.close()
 
 
+# ---------- T52: abonos offline a revisión (RF-38/RF-51) ----------
+
+def _abono_v2(uuid_val, corte_id, concepto="cliente", importe="10.00", momento=None):
+    datos = {
+        "operacion_uuid": uuid_val,
+        "corte_id": corte_id,
+        "concepto": concepto,
+        "importe": importe,
+        "metodo_pago": "efectivo",
+        "modo_captura": "offline",
+    }
+    if momento is not None:
+        datos["momento_real"] = momento
+    return {"id": uuid_val, "accion": "registrar_abono_v2", "datos": datos}
+
+
+def test_abono_offline_exceso_a_revision_sin_mover_saldo(client):
+    """T52 (RF-38): exceso offline conserva importe real en revisión; saldo intacto."""
+    import uuid as uuid_lib
+    from datetime import datetime
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barb_ab1", Rol.BARBERO)
+    servicio = _crear_servicio(db)
+    token = _token(client, "barb_ab1")
+    corte_id = client.post(
+        "/api/cortes/", headers=_headers(token),
+        json={"servicio_id": servicio.id, "metodo_pago": "efectivo"},
+    ).json()["id"]
+    uuid_val = str(uuid_lib.uuid4())
+    r = client.post(
+        "/api/sync/", headers=_headers(token),
+        json={"operaciones": [_abono_v2(uuid_val, corte_id, importe="150.00")]},
+    )
+    resultado = r.json()["resultados"][0]
+    assert resultado["estado"] == "revision"
+    assert resultado["status_code"] == 202
+    saldos = client.get(f"/api/cortes/{corte_id}/saldos", headers=_headers(token)).json()
+    assert saldos["cliente"]["abonado"] == "0.00"
+    assert saldos["cliente"]["restante"] == "100.00"
+    db.close()
+
+
+def test_abono_online_exceso_sigue_rechazado_400(client):
+    """T52: regresión RF-41, el exceso online por POST se rechaza."""
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barb_ab2", Rol.BARBERO)
+    servicio = _crear_servicio(db)
+    token = _token(client, "barb_ab2")
+    corte_id = client.post(
+        "/api/cortes/", headers=_headers(token),
+        json={"servicio_id": servicio.id, "metodo_pago": "efectivo"},
+    ).json()["id"]
+    r = client.post(
+        f"/api/cortes/{corte_id}/movimientos", headers=_headers(token),
+        json={"concepto": "cliente", "importe": "150.00", "metodo_pago": "efectivo"},
+    )
+    assert r.status_code == 400
+    db.close()
+
+
+def test_abono_offline_reloj_adelantado_a_revision(client):
+    """T52 (RF-51): momento futuro (>5min) conserva operación en revisión."""
+    import uuid as uuid_lib
+    from datetime import datetime, timedelta
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barb_ab3", Rol.BARBERO)
+    servicio = _crear_servicio(db)
+    token = _token(client, "barb_ab3")
+    corte_id = client.post(
+        "/api/cortes/", headers=_headers(token),
+        json={"servicio_id": servicio.id, "metodo_pago": "efectivo"},
+    ).json()["id"]
+    futuro = (datetime.utcnow() + timedelta(minutes=10)).isoformat()
+    r = client.post(
+        "/api/sync/", headers=_headers(token),
+        json={"operaciones": [_abono_v2(str(uuid_lib.uuid4()), corte_id, momento=futuro)]},
+    )
+    resultado = r.json()["resultados"][0]
+    assert resultado["estado"] == "revision"
+    assert resultado["status_code"] == 202
+    db.close()
+
+
+def test_abono_v2_reintento_misma_uuid_no_duplica(client):
+    """T52: misma UUID de abono reenviada no crea otro movimiento."""
+    import uuid as uuid_lib
+    from app.models.finanzas_corte import MovimientoCorte
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barb_ab4", Rol.BARBERO)
+    servicio = _crear_servicio(db)
+    token = _token(client, "barb_ab4")
+    corte_id = client.post(
+        "/api/cortes/", headers=_headers(token),
+        json={"servicio_id": servicio.id, "metodo_pago": "efectivo"},
+    ).json()["id"]
+    body = {"operaciones": [_abono_v2(str(uuid_lib.uuid4()), corte_id, importe="10.00")]}
+    client.post("/api/sync/", headers=_headers(token), json=body)
+    client.post("/api/sync/", headers=_headers(token), json=body)
+    db2 = TestingSessionLocal()
+    assert db2.query(MovimientoCorte).filter(
+        MovimientoCorte.corte_id == corte_id
+    ).count() == 1
+    db2.close()
+    db.close()
+
+
 def test_crear_corte_v2_conflicto_misma_uuid_distinto_payload_409(client):
     """T51: misma UUID con distinto contenido → 409 sin efecto."""
     import uuid as uuid_lib

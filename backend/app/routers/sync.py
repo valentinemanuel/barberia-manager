@@ -20,6 +20,7 @@ router = APIRouter(prefix="/api/sync", tags=["Sincronización"])
 ACCIONES_PERMITIDAS: dict[str, set[Rol]] = {
     "crear_corte": {Rol.ADMIN, Rol.BARBERO},
     "crear_corte_v2": {Rol.ADMIN, Rol.BARBERO},
+    "registrar_abono_v2": {Rol.ADMIN, Rol.BARBERO},
     "crear_servicio": {Rol.ADMIN},
     "crear_producto": {Rol.ADMIN},
     "crear_consumible": {Rol.ADMIN},
@@ -178,6 +179,116 @@ def _sincronizar_corte_v2(
     )
 
 
+def _sincronizar_abono_v2(
+    db: Session, usuario: Usuario, op: OperacionSync
+) -> ResultadoOperacion:
+    """Abono offline idempotente (paquete 8, T52, RF-38/RF-51 parcial).
+
+    UUID obligatoria; exceso sobre el saldo y reloj >5min conservan el
+    movimiento en revisión (202) sin mover saldos. Ajeno/inexistente → 404
+    idéntico (RF-14). Anulado → 409. El POST directo sigue siendo online.
+    """
+    import uuid as uuid_lib
+    from datetime import datetime, timezone
+    from decimal import Decimal, InvalidOperation
+
+    from app.models.corte import Corte
+    from app.models.finanzas_corte import ConceptoMovimiento, EstadoMovimiento
+    from app.services.movimiento_corte_service import registrar_abono
+
+    uuid_val = op.datos.get("operacion_uuid")
+    if not uuid_val:
+        return ResultadoOperacion(
+            id=op.id, accion=op.accion, aceptada=False, status_code=400,
+            motivo="falta_uuid",
+            notificacion="La operación v2 exige operacion_uuid.",
+        )
+    try:
+        uuid_lib.UUID(str(uuid_val))
+    except (ValueError, AttributeError, TypeError):
+        return ResultadoOperacion(
+            id=op.id, accion=op.accion, aceptada=False, status_code=400,
+            motivo="uuid_invalida",
+            notificacion="La operacion_uuid no es una UUID válida.",
+        )
+    try:
+        corte_id = int(op.datos["corte_id"])
+        concepto = ConceptoMovimiento(op.datos["concepto"])
+        importe = Decimal(str(op.datos["importe"]))
+    except (KeyError, TypeError, ValueError, InvalidOperation) as e:
+        return ResultadoOperacion(
+            id=op.id, accion=op.accion, aceptada=False, status_code=400,
+            motivo=f"datos_invalidos: {e}",
+            notificacion="La operación trae datos inválidos.",
+        )
+    momento = None
+    momento_raw = op.datos.get("momento_real")
+    if momento_raw:
+        try:
+            momento = datetime.fromisoformat(str(momento_raw))
+            if momento.tzinfo is not None:
+                momento = momento.astimezone(timezone.utc).replace(tzinfo=None)
+        except ValueError as e:
+            return ResultadoOperacion(
+                id=op.id, accion=op.accion, aceptada=False, status_code=400,
+                motivo=f"momento_invalido: {e}",
+                notificacion="El momento_real no es una fecha válida.",
+            )
+    corte = db.query(Corte).filter(Corte.id == corte_id).first()
+    if not corte:
+        return ResultadoOperacion(
+            id=op.id, accion=op.accion, aceptada=False, status_code=404,
+            motivo="Corte no encontrado",
+            notificacion="Corte no encontrado.",
+        )
+    if usuario.rol != Rol.ADMIN and corte.barbero_id != usuario.id:
+        return ResultadoOperacion(
+            id=op.id, accion=op.accion, aceptada=False, status_code=404,
+            motivo="Corte no encontrado",
+            notificacion="Corte no encontrado.",
+        )
+    if corte.anulado_en is not None:
+        return ResultadoOperacion(
+            id=op.id, accion=op.accion, aceptada=False, status_code=409,
+            motivo="Corte anulado: no admite abonos ordinarios",
+            notificacion="Corte anulado: no admite abonos ordinarios.",
+        )
+    try:
+        from app.models.corte import MetodoPago as MetodoAbono
+
+        try:
+            metodo = MetodoAbono(op.datos.get("metodo_pago") or "efectivo")
+        except ValueError:
+            metodo = MetodoAbono.EFECTIVO
+        movimiento = registrar_abono(
+            db, autor=usuario, corte=corte, concepto=concepto,
+            importe=importe, metodo=metodo, momento_real=momento,
+            uuid=str(uuid_val), origen="offline",
+        )
+    except ValueError as e:
+        db.rollback()
+        return ResultadoOperacion(
+            id=op.id, accion=op.accion, aceptada=False, status_code=400,
+            motivo=str(e), notificacion=f"Abono rechazado: {e}",
+        )
+    db.commit()
+    estado = movimiento.estado.value if movimiento.estado else "aceptado"
+    if estado == "revision":
+        return ResultadoOperacion(
+            id=op.id, accion=op.accion, aceptada=False, status_code=202,
+            motivo=movimiento.motivo_revision,
+            notificacion="Abono en revisión administrativa.",
+            estado="revision",
+            corte_id=corte.id,
+            snapshot={"importe": str(movimiento.importe)},
+        )
+    return ResultadoOperacion(
+        id=op.id, accion=op.accion, aceptada=True, status_code=201,
+        estado="aceptada", corte_id=corte.id,
+        snapshot={"importe": str(movimiento.importe)},
+    )
+
+
 @router.post("/", response_model=SyncResponse)
 def sincronizar_operaciones(
     payload: SyncRequest,
@@ -237,6 +348,9 @@ def sincronizar_operaciones(
         try:
             if op.accion == "crear_corte_v2":
                 resultados.append(_sincronizar_corte_v2(db, usuario, op))
+                continue
+            if op.accion == "registrar_abono_v2":
+                resultados.append(_sincronizar_abono_v2(db, usuario, op))
                 continue
             if op.accion == "crear_corte":
                 try:
