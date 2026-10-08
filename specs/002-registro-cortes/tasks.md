@@ -785,7 +785,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - Implementar: `capacidad = reconocido − devoluciones` por corte+concepto con lock mínimo (serializar por corte+concepto) + `unique(operacion)` en la devolución.
   - Hecho cuando: carrera y límites en verde sin doble consumo.
 
-- [ ] **T62. Anulados: correctivos admin + efecto al anular.** RF-46 (parcial).
+- [x] **T62. Anulados: correctivos admin + efecto al anular.** RF-46 (parcial).
   - Dependencias: T58–T61.
   - Tests primero: abono ordinario al anulado → 409 (regresión); compensación/devolución admin al anulado → 201 trazable; anular con dinero conocido escribe cancelación de obligaciones + `neto→excedente` visible en saldos (sin devolución automática, sin reactivación).
   - Implementar: bifurcar 409 (ordinario vs correctivo admin) + efecto al anular con journal (`anular_corte` extendido).
@@ -817,7 +817,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 | T59 | Rojo real: triple 404 (sin ruta resolver) | Verde: `112 passed` (3 archivos) | DB estable; `movimiento_corte_service.py` (`resolver_revision` + `RevisionResuelta`: real acepta original intacto; erróneo crea compensatoria +real con referencia o solo traza si 0; motivo obligatorio) + `movimientos_corte.py` (POST resolver solo admin 403, journal RESOLUCION misma UoW, `tipo/motivo/original_uuid/evidencia` en respuesta) + `auditoria_corte.py` (acciones correctivas) + `test_cortes.py`. Sin mutar importes ni UUID originales. |
 | T60 | Rojo real: doble 404 (sin ruta compensaciones) | Verde: `91 passed` (2 archivos) | DB estable; `movimiento_corte_service.py` (`registrar_compensacion` + `OriginalAusente`: motivo obligatorio, importe con signo no nulo, referencia exigida, idempotente por UUID) + `movimientos_corte.py` (POST solo admin 403, journal COMPENSACION, helper `_respuesta_movimiento` que elimina triplicación) + `test_cortes.py`. Original intacto; correctivo ya vale sobre anulados (base T62). |
 | T61 | Rojo real: triple 404 (sin ruta devoluciones) | Verde: `94 passed` (2 archivos, incluye carrera con threads) | DB estable; `movimiento_corte_service.py` (`capacidad_devolucion` = neto no negativo + `registrar_devolucion` con motivo/capacidad/idempotencia + `_candado_devolucion` de proceso) + `movimientos_corte.py` (POST solo admin, UoW con candado + journal con capacidad real, `rollback` en error) + `test_cortes.py` (límite, carrera 201+400 determinista, replay, permisos). Multi-worker/PG exigirá locks de fila (deuda explícita). |
-| T62 |  |  |  |
+| T62 | Rojo real: `restante` seguía 70 tras anular (sin cancelación); correctivos al anulado en verde inicial (endpoints sin check, honesto) | Verde: `119 passed` (3 archivos) | DB estable; `movimiento_corte_service.py` (anulado ⇒ obligaciones 0, neto→excedente; historial intacto) + `cortes.py` (journal ANULACION con `obligaciones_canceladas` + netos/excedentes) + `test_cortes.py`. Sin nueva migración: la escritura del efecto es la fila de journal (terminal, sin reapertura). Ordinario al anulado sigue 409 (POST y sync). |
 | T63 |  |  |  |
 | T64 |  |  |  |
 | T65 |  |  |  |

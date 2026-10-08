@@ -2049,3 +2049,50 @@ def test_devolucion_reintento_y_permisos(client):
     assert _devolver(client, "barbero_t61c", corte_id, {
         "concepto": "cliente", "importe": "5.00", "motivo": "m",
     }).status_code == 403
+
+
+def _anular_como_admin(client, admin_login, corte_id, motivo="anulacion T62"):
+    return _anular_corte(client, _token_para(client, admin_login), corte_id, motivo)
+
+
+def test_correctivos_admin_al_anulado_201(client):
+    """T62 (RF-46): ordinario al anulado → 409; compensación/devolución admin → 201."""
+    corte_id = _corte_para_abonos(client, "barbero_t62")
+    token = _token_para(client, "barbero_t62")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t62", Rol.ADMIN)
+    db.close()
+    assert _abonar(client, token, corte_id, "cliente", 30).status_code == 201
+    original_uuid = _abonar(client, token, corte_id, "comision", 10).json()["uuid"]
+    assert _anular_como_admin(client, "admin_t62", corte_id).status_code == 200
+    assert _abonar(client, token, corte_id, "cliente", 10).status_code == 409
+    assert _compensar(client, "admin_t62", corte_id, {
+        "concepto": "cliente", "importe": "-5.00",
+        "motivo": "ajuste anulado", "original_uuid": original_uuid,
+    }).status_code == 201
+    assert _devolver(client, "admin_t62", corte_id, {
+        "concepto": "cliente", "importe": "5.00", "motivo": "excedente anulado",
+    }).status_code == 201
+
+
+def test_anular_cancela_obligaciones_y_neto_a_excedente(client):
+    """T62 (RF-27/46): al anular con 30/100, restante 0 y excedente 30."""
+    from app.models.auditoria_corte import AuditoriaCorte as AuditoriaT62
+
+    corte_id = _corte_para_abonos(client, "barbero_t62b")
+    token = _token_para(client, "barbero_t62b")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t62b", Rol.ADMIN)
+    db.close()
+    assert _abonar(client, token, corte_id, "cliente", 30).status_code == 201
+    assert _anular_como_admin(client, "admin_t62b", corte_id).status_code == 200
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["abonado"] == "30.00"
+    assert saldos["cliente"]["restante"] == "0.00"
+    assert saldos["cliente"]["excedente"] == "30.00"
+    db = TestingSessionLocal()
+    fila = db.query(AuditoriaT62).filter(AuditoriaT62.corte_id == corte_id).all()
+    assert any(
+        (r.despues or {}).get("obligaciones_canceladas") is True for r in fila
+    )
+    db.close()

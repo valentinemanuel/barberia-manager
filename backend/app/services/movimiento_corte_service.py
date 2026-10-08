@@ -123,6 +123,9 @@ def saldos_corte(db: Session, corte: Corte) -> dict:
     Revisión y nulos legacy: los nulos legacy cuentan como aceptados
     (compat); las revisiones no mueven saldos (RF-38/RF-53).
     Compensaciones suman con su signo, devoluciones restan (RF-41/43).
+    Anulado (RF-27/46, T62): obligaciones canceladas al anular → el neto
+    ya abonado queda como excedente a regularizar, sin devolución
+    automática ni nuevos abonos ordinarios.
     """
     from sqlalchemy import or_
 
@@ -144,10 +147,16 @@ def saldos_corte(db: Session, corte: Corte) -> dict:
         else:
             # Abono suma; compensación suma con su signo (puede restar).
             neto[movimiento.concepto] += movimiento.importe
+    if corte.anulado_en is not None:
+        obligacion_cliente = Decimal("0")
+        obligacion_comision = Decimal("0")
+    else:
+        obligacion_cliente = corte.precio
+        obligacion_comision = corte.parte_barbero
     return {
-        "cliente": calcular_saldo(corte.precio, neto[ConceptoMovimiento.CLIENTE]),
+        "cliente": calcular_saldo(obligacion_cliente, neto[ConceptoMovimiento.CLIENTE]),
         "comision": calcular_saldo(
-            corte.parte_barbero, neto[ConceptoMovimiento.COMISION]
+            obligacion_comision, neto[ConceptoMovimiento.COMISION]
         ),
     }
 
