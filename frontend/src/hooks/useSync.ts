@@ -223,21 +223,38 @@ export function useSync() {
         }
       }
 
-      // Actualizar datos locales desde el servidor
+      // Catálogo (RF-35, T55): reemplazo transaccional solo tras respuesta
+      // validada. Un fallo conserva la última copia válida; sin catálogo
+      // suficiente el registro informa la limitación sin confirmar nada.
       const [servicios, productos, consumibles] = await Promise.all([
-        api.get('/servicios/').catch(() => ({ data: [] })),
-        api.get('/productos/').catch(() => ({ data: [] })),
-        api.get('/consumibles/').catch(() => ({ data: [] })),
+        api.get('/servicios/').catch(() => null),
+        api.get('/productos/').catch(() => null),
+        api.get('/consumibles/').catch(() => null),
       ])
+      const esListaValida = (r: unknown): r is { data: unknown[] } =>
+        !!r &&
+        typeof r === 'object' &&
+        'data' in r &&
+        Array.isArray((r as { data: unknown }).data)
 
-      await db.servicios.clear()
-      await db.servicios.bulkPut(servicios.data)
-
-      await db.productos.clear()
-      await db.productos.bulkPut(productos.data)
-
-      await db.consumibles.clear()
-      await db.consumibles.bulkPut(consumibles.data)
+      if (esListaValida(servicios) || esListaValida(productos) || esListaValida(consumibles)) {
+        await db.transaction('rw', db.servicios, db.productos, db.consumibles, async () => {
+          if (esListaValida(servicios)) {
+            await db.servicios.clear()
+            await db.servicios.bulkPut(servicios.data)
+          }
+          if (esListaValida(productos)) {
+            await db.productos.clear()
+            await db.productos.bulkPut(productos.data)
+          }
+          if (esListaValida(consumibles)) {
+            await db.consumibles.clear()
+            await db.consumibles.bulkPut(consumibles.data)
+          }
+        })
+      } else {
+        console.warn('Sync: sin catálogo del servidor; conservo la última copia válida.')
+      }
 
       setUltimaSync(new Date())
     } catch (error) {
