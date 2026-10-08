@@ -46,6 +46,7 @@ class SaldoConcepto(BaseModel):
     obligacion: Decimal
     abonado: Decimal
     restante: Decimal
+    excedente: Decimal = Decimal("0.00")
     estado: str
 
 

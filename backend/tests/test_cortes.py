@@ -1729,3 +1729,100 @@ def test_resumen_personal_excluye_anulados(client):
         r = client.get(f"/api/cortes/mi/resumen/{ruta}", headers=auth)
         assert r.status_code == 200, ruta
         assert r.json()["total_cortes"] == 1, ruta
+
+
+def _movimiento_directo(db, corte_id, actor_id, concepto, tipo, importe, estado=None):
+    """T58: fila directa (simula estados que la API aún no produce)."""
+    from app.models.corte import MetodoPago as MetodoAbono
+    from app.models.finanzas_corte import MovimientoCorte as MovimientoModelo
+
+    fila = MovimientoModelo(
+        uuid=f"t58-{corte_id}-{concepto}-{tipo}-{importe}",
+        corte_id=corte_id,
+        concepto=concepto,
+        tipo=tipo,
+        importe=Decimal(importe),
+        autor_id=actor_id,
+        metodo_pago=MetodoAbono.EFECTIVO,
+        estado=estado,
+    )
+    db.add(fila)
+    db.commit()
+    return fila
+
+
+def test_saldos_exponen_excedente_sin_cambiar_restante(client):
+    """T58 (RF-21): neto sobre obligación → excedente visible, restante 0."""
+    from app.models.finanzas_corte import (
+        ConceptoMovimiento as ConceptoT58,
+        EstadoMovimiento as EstadoT58,
+        TipoMovimiento as TipoT58,
+    )
+
+    corte_id = _corte_para_abonos(client, "barbero_t58")
+    token = _token_para(client, "barbero_t58")
+    db = TestingSessionLocal()
+    actor_id = db.query(Usuario).filter(Usuario.usuario == "barbero_t58").first().id
+    _movimiento_directo(
+        db, corte_id, actor_id, ConceptoT58.CLIENTE, TipoT58.ABONO, "150.00",
+        EstadoT58.ACEPTADO,
+    )
+    db.close()
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["abonado"] == "150.00"
+    assert saldos["cliente"]["restante"] == "0.00"
+    assert saldos["cliente"]["excedente"] == "50.00"
+
+
+def test_revision_no_mueve_saldos_ni_excedente(client):
+    """T58: la revisión sigue ignorada en saldos (RF-38/RF-53)."""
+    from app.models.finanzas_corte import (
+        ConceptoMovimiento as ConceptoT58b,
+        EstadoMovimiento as EstadoT58b,
+        TipoMovimiento as TipoT58b,
+    )
+
+    corte_id = _corte_para_abonos(client, "barbero_t58b")
+    token = _token_para(client, "barbero_t58b")
+    db = TestingSessionLocal()
+    actor_id = db.query(Usuario).filter(Usuario.usuario == "barbero_t58b").first().id
+    _movimiento_directo(
+        db, corte_id, actor_id, ConceptoT58b.CLIENTE, TipoT58b.ABONO, "150.00",
+        EstadoT58b.REVISION,
+    )
+    db.close()
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["abonado"] == "0.00"
+    assert saldos["cliente"]["restante"] == "100.00"
+    assert saldos["cliente"]["excedente"] == "0.00"
+
+
+def test_compensacion_y_devolucion_mueven_neto(client):
+    """T58 (RF-41/43): compensación con signo y devolución restan del neto."""
+    from app.models.finanzas_corte import (
+        ConceptoMovimiento as ConceptoT58c,
+        EstadoMovimiento as EstadoT58c,
+        TipoMovimiento as TipoT58c,
+    )
+
+    corte_id = _corte_para_abonos(client, "barbero_t58c")
+    token = _token_para(client, "barbero_t58c")
+    db = TestingSessionLocal()
+    actor_id = db.query(Usuario).filter(Usuario.usuario == "barbero_t58c").first().id
+    _movimiento_directo(
+        db, corte_id, actor_id, ConceptoT58c.CLIENTE, TipoT58c.ABONO, "100.00",
+        EstadoT58c.ACEPTADO,
+    )
+    _movimiento_directo(
+        db, corte_id, actor_id, ConceptoT58c.CLIENTE, TipoT58c.COMPENSACION, "-30.00",
+        EstadoT58c.ACEPTADO,
+    )
+    _movimiento_directo(
+        db, corte_id, actor_id, ConceptoT58c.CLIENTE, TipoT58c.DEVOLUCION, "20.00",
+        EstadoT58c.ACEPTADO,
+    )
+    db.close()
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["abonado"] == "50.00"
+    assert saldos["cliente"]["restante"] == "50.00"
+    assert saldos["cliente"]["excedente"] == "0.00"

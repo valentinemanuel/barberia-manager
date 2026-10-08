@@ -761,7 +761,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 
 ### Tareas en orden de dependencia
 
-- [ ] **T58. Modelo correctivo + migración 007 + excedente en saldos.** RF-21/RF-41 (parciales).
+- [x] **T58. Modelo correctivo + migración 007 + excedente en saldos.** RF-21/RF-41 (parciales).
   - Dependencias: ninguna dentro del paquete.
   - Tests primero: `history` muestra `007`; `upgrade` en TEMP legacy+filas agrega columnas preservando datos; `saldos` expone `excedente` por concepto (`neto−obligación` cuando sobra) sin cambiar `restante/abonado` legacy; revisión sigue sin mover saldos.
   - Implementar: `COMPENSACION`/`DEVOLUCION` en el Enum + `original_uuid`/`motivo`/`evidencia` nullable; `neto = abonos + compensaciones − devoluciones` (solo aceptados; revisión/rechazados aparte).
@@ -813,7 +813,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 
 | Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
 |---|---|---|---|
-| T58 |  |  |  |
+| T58 | Rojo real: triple `AttributeError` (COMPENSACION/DEVOLUCION/excedente inexistentes) + `history` en 006 | Verde: `109 passed` (3 archivos) + `007` en TEMP (legacy + 1 fila: columnas agregadas, fila preservada) | DB estable (`bd4c32af…`); `finanzas_corte.py` (tipos + `original_uuid/motivo/evidencia` nullable) + `007_correctivos_corte.py` + `movimiento_corte_service.py` (`neto` = abonos + compensaciones con signo − devoluciones, solo aceptados; `excedente` aditivo, `restante` intacto) + `SaldoConcepto.excedente` (default, compat). |
 | T59 |  |  |  |
 | T60 |  |  |  |
 | T61 |  |  |  |

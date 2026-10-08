@@ -83,24 +83,28 @@ def registrar_abono(
     return movimiento
 
 
-def calcular_saldo(obligacion: Decimal, abonado: Decimal) -> dict:
-    """Saldo de un concepto: obligación − neto, con estado.
+def calcular_saldo(obligacion: Decimal, neto_reconocido: Decimal) -> dict:
+    """Saldo de un concepto: obligación − neto, con excedente visible.
 
-    Sin excedentes ni unknown en este paquete (RF-21 parcial): el exceso
-    online se rechaza antes de llegar aquí (T39) y lo offline queda para sync.
+    Paquete 9 (RF-21 parcial): `abonado` es el neto reconocido
+    (abonos + compensaciones con signo − devoluciones, solo aceptados);
+    `restante` nunca es negativo y el sobrante va a `excedente`.
+    Revisión/rechazados no entran al neto (RF-38/RF-53).
     """
-    restante = obligacion - abonado
+    restante = obligacion - neto_reconocido
+    excedente = neto_reconocido - obligacion
     if restante <= Decimal("0"):
         estado = "pagado"
-    elif abonado > Decimal("0"):
+    elif neto_reconocido > Decimal("0"):
         estado = "parcial"
     else:
         estado = "pendiente"
     centavo = Decimal("0.01")
     return {
         "obligacion": obligacion.quantize(centavo),
-        "abonado": abonado.quantize(centavo),
+        "abonado": neto_reconocido.quantize(centavo),
         "restante": max(restante, Decimal("0")).quantize(centavo),
+        "excedente": max(excedente, Decimal("0")).quantize(centavo),
         "estado": estado,
     }
 
@@ -110,6 +114,7 @@ def saldos_corte(db: Session, corte: Corte) -> dict:
 
     Revisión y nulos legacy: los nulos legacy cuentan como aceptados
     (compat); las revisiones no mueven saldos (RF-38/RF-53).
+    Compensaciones suman con su signo, devoluciones restan (RF-41/43).
     """
     from sqlalchemy import or_
 
@@ -126,7 +131,11 @@ def saldos_corte(db: Session, corte: Corte) -> dict:
     )
     neto = {ConceptoMovimiento.CLIENTE: Decimal("0"), ConceptoMovimiento.COMISION: Decimal("0")}
     for movimiento in movimientos:
-        neto[movimiento.concepto] += movimiento.importe
+        if movimiento.tipo == TipoMovimiento.DEVOLUCION:
+            neto[movimiento.concepto] -= movimiento.importe
+        else:
+            # Abono suma; compensación suma con su signo (puede restar).
+            neto[movimiento.concepto] += movimiento.importe
     return {
         "cliente": calcular_saldo(corte.precio, neto[ConceptoMovimiento.CLIENTE]),
         "comision": calcular_saldo(
