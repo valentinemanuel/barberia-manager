@@ -754,6 +754,8 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - M `backend/app/services/movimiento_corte_service.py` (solo `neto/excedente` por concepto + `resolver_revision` + `registrar_compensacion` + `registrar_devolucion` + `capacidad_devolucion`; `restante` conserva semántica; revisión sigue sin mover saldos).
   - M `backend/app/routers/movimientos_corte.py` (solo endpoints admin resolución/compensación/devolución + 409 anulado bifurcado ordinario vs correctivo + `estado/motivo/excedente` en respuestas).
   - M `backend/app/services/edicion_corte_service.py` (solo efecto al anular con dinero conocido + journal; sin reactivación).
+  - M `backend/app/routers/cortes.py` (solo journal de anulación con efecto; regularizado como en paquete 6: requerido por T62).
+  - M `backend/app/models/auditoria_corte.py` (solo 3 acciones correctivas del Enum; requerido por T59–T61).
   - M `backend/tests/test_cortes.py` + M `backend/tests/test_sync_roles.py` (solo tests nuevos).
   - M `frontend/src/pages/*` + `frontend/src/services/*` (solo vista de saldos con excedente/revisión/motivos + tipos; sin rediseño).
 - Prohibido: pull historial/cobertura, LWW, RF-40, jornadas/cierres/imputación, reasignación, bóveda, `create_all` en import, `pytest tests/` global, cualquier `upgrade` contra base real.
@@ -809,7 +811,10 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - Registrar comandos/resultados en la evidencia de abajo y actualizar el estado sin declarar implementada la spec completa. El cierre requiere revisión independiente (`sdd-reviewer`) y no autoriza paquete 10.
   - Hecho cuando: todo lo anterior en verde, solo los archivos autorizados cambiaron y queda solicitada la revisión de cierre.
 
-### Evidencia futura (paquete 9)
+### Cierre del paquete 9 (revisión independiente)
+
+`sdd-reviewer`: veredicto **APROBADO PAQUETE 9** sin tocar archivos. Re-ejecutó todo en verde (147 + 167), migración 007 en TEMP con guards, hash DB idéntico, constitución y códigos exactos. Aritmética verificada: compensatoria +real (T59) vs −ajuste (T60) coherentes; capacidad sin doble conteo; `real` íntegro conforme RF-53. P2 no bloqueantes registrados: (1) `erroneo` con real>0 re-ejecutable sin UUID duplica (requiere decisión de spec); (2) compensación positiva sin evidencia exigida infla capacidad; (3) replay `real` → 409 en vez de acuse (cliente debe tratarlo como terminal); (4) anu
+...[truncated 737 chars]
 
 | Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
 |---|---|---|---|
