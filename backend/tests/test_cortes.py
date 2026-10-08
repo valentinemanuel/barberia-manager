@@ -1913,3 +1913,61 @@ def test_resolver_exige_motivo_y_admin(client):
     assert _resolver(
         client, admin, corte_id, mov_uuid, {"veredicto": "real", "motivo": "otra vez"}
     ).status_code == 409
+
+
+def _compensar(client, admin_login, corte_id, body):
+    return client.post(
+        f"/api/cortes/{corte_id}/compensaciones",
+        json=body,
+        headers={"Authorization": f"Bearer {_token_para(client, admin_login)}"},
+    )
+
+
+def test_compensacion_corrige_sin_borrar_original(client):
+    """T60 (RF-43): compensatoria −30 con motivo y referencia; original intacto."""
+    from app.models.finanzas_corte import MovimientoCorte as MovimientoT60
+
+    corte_id = _corte_para_abonos(client, "barbero_t60")
+    token = _token_para(client, "barbero_t60")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t60", Rol.ADMIN)
+    db.close()
+    original_uuid = _abonar(client, token, corte_id, "cliente", 100).json()["uuid"]
+    r = _compensar(client, "admin_t60", corte_id, {
+        "concepto": "cliente",
+        "importe": "-30.00",
+        "motivo": "cobro duplicado parcial",
+        "original_uuid": original_uuid,
+    })
+    assert r.status_code == 201
+    assert r.json()["tipo"] == "compensacion"
+    assert r.json()["original_uuid"] == original_uuid
+    db = TestingSessionLocal()
+    original = db.query(MovimientoT60).filter(MovimientoT60.uuid == original_uuid).first()
+    assert original.importe == Decimal("100.00")
+    db.close()
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["abonado"] == "70.00"
+    assert saldos["cliente"]["restante"] == "30.00"
+
+
+def test_compensacion_exige_motivo_original_y_admin(client):
+    """T60: sin motivo → 400; original inexistente → 404; barbero → 403; cero → 400."""
+    corte_id = _corte_para_abonos(client, "barbero_t60b")
+    token = _token_para(client, "barbero_t60b")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t60b", Rol.ADMIN)
+    db.close()
+    base = {"concepto": "cliente", "importe": "-10.00", "original_uuid": "inexistente"}
+    assert _compensar(client, "admin_t60b", corte_id, {**base, "motivo": ""}).status_code == 400
+    assert _compensar(
+        client, "admin_t60b", corte_id, {**base, "motivo": "m"}
+    ).status_code == 404
+    assert _compensar(
+        client, "barbero_t60b", corte_id, {**base, "motivo": "m"}
+    ).status_code == 403
+    original_uuid = _abonar(client, token, corte_id, "cliente", 50).json()["uuid"]
+    assert _compensar(client, "admin_t60b", corte_id, {
+        "concepto": "cliente", "importe": "0.00",
+        "motivo": "cero", "original_uuid": original_uuid,
+    }).status_code == 400

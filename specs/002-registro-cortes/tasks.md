@@ -773,7 +773,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - Implementar: `POST .../revisiones/{uuid}/resolver` (solo admin, misma UoW: original + compensación/evidencia atómicos, sin commit intermedio).
   - Hecho cuando: ambas ramas en verde con importes exactos y sin mutar hash/UUID originales.
 
-- [ ] **T60. Compensación administrativa.** RF-43 (parcial).
+- [x] **T60. Compensación administrativa.** RF-43 (parcial).
   - Dependencias: T58.
   - Tests primero: admin corrige movimiento erróneo → compensatorio append-only con motivo + `original_uuid`, original intacto; la compensación no cuenta como salida física (capacidad de devolución no crece por signo contable sin evidencia de dinero real).
   - Implementar: `registrar_compensacion` + endpoint admin; validación de concepto y signo contra el original.
@@ -815,7 +815,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 |---|---|---|---|
 | T58 | Rojo real: triple `AttributeError` (COMPENSACION/DEVOLUCION/excedente inexistentes) + `history` en 006 | Verde: `109 passed` (3 archivos) + `007` en TEMP (legacy + 1 fila: columnas agregadas, fila preservada) | DB estable (`bd4c32af…`); `finanzas_corte.py` (tipos + `original_uuid/motivo/evidencia` nullable) + `007_correctivos_corte.py` + `movimiento_corte_service.py` (`neto` = abonos + compensaciones con signo − devoluciones, solo aceptados; `excedente` aditivo, `restante` intacto) + `SaldoConcepto.excedente` (default, compat). |
 | T59 | Rojo real: triple 404 (sin ruta resolver) | Verde: `112 passed` (3 archivos) | DB estable; `movimiento_corte_service.py` (`resolver_revision` + `RevisionResuelta`: real acepta original intacto; erróneo crea compensatoria +real con referencia o solo traza si 0; motivo obligatorio) + `movimientos_corte.py` (POST resolver solo admin 403, journal RESOLUCION misma UoW, `tipo/motivo/original_uuid/evidencia` en respuesta) + `auditoria_corte.py` (acciones correctivas) + `test_cortes.py`. Sin mutar importes ni UUID originales. |
-| T60 |  |  |  |
+| T60 | Rojo real: doble 404 (sin ruta compensaciones) | Verde: `91 passed` (2 archivos) | DB estable; `movimiento_corte_service.py` (`registrar_compensacion` + `OriginalAusente`: motivo obligatorio, importe con signo no nulo, referencia exigida, idempotente por UUID) + `movimientos_corte.py` (POST solo admin 403, journal COMPENSACION, helper `_respuesta_movimiento` que elimina triplicación) + `test_cortes.py`. Original intacto; correctivo ya vale sobre anulados (base T62). |
 | T61 |  |  |  |
 | T62 |  |  |  |
 | T63 |  |  |  |

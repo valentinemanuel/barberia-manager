@@ -16,8 +16,10 @@ from app.models.finanzas_corte import ConceptoMovimiento, MovimientoCorte
 from app.models.usuario import Rol, Usuario
 from app.services.edicion_corte_service import auditar_cambio
 from app.services.movimiento_corte_service import (
+    OriginalAusente,
     RevisionResuelta,
     registrar_abono,
+    registrar_compensacion,
     resolver_revision,
     saldos_corte,
 )
@@ -123,6 +125,11 @@ def crear_movimiento(
         raise HTTPException(status_code=400, detail=str(e))
     db.commit()
     db.refresh(movimiento)
+    return _respuesta_movimiento(movimiento)
+
+
+def _respuesta_movimiento(movimiento: MovimientoCorte) -> MovimientoResponse:
+    """Serializa un movimiento con los campos correctivos aditivos."""
     respuesta = MovimientoResponse.model_validate(movimiento)
     respuesta.estado = movimiento.estado.value if movimiento.estado else "aceptado"
     respuesta.motivo_revision = movimiento.motivo_revision
@@ -214,11 +221,66 @@ def resolver_revision_endpoint(
     )
     db.commit()
     db.refresh(resultado)
-    respuesta = MovimientoResponse.model_validate(resultado)
-    respuesta.estado = resultado.estado.value if resultado.estado else "aceptado"
-    respuesta.motivo_revision = resultado.motivo_revision
-    respuesta.tipo = resultado.tipo.value if resultado.tipo else None
-    respuesta.motivo = resultado.motivo
-    respuesta.original_uuid = resultado.original_uuid
-    respuesta.evidencia = resultado.evidencia
-    return respuesta
+    return _respuesta_movimiento(resultado)
+
+
+class CompensacionCrear(BaseModel):
+    """Compensación admin de un movimiento erróneo (paquete 9, RF-43)."""
+
+    concepto: ConceptoMovimiento
+    importe: Decimal
+    motivo: str
+    original_uuid: str
+    evidencia: Optional[str] = None
+    operacion_uuid: Optional[UUID] = None
+
+
+@router.post(
+    "/{corte_id}/compensaciones",
+    response_model=MovimientoResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def crear_compensacion(
+    corte_id: int,
+    datos: CompensacionCrear,
+    db: Session = Depends(get_db),
+    actor: Usuario = Depends(obtener_usuario_actual),
+):
+    """Registra una compensación sin borrar el original (solo admin).
+
+    Vale también sobre anulados (ajuste administrativo trazable, RF-46);
+    el abono ordinario sigue prohibido allí.
+    """
+    if actor.rol != Rol.ADMIN:
+        raise HTTPException(status_code=403, detail="Solo un admin compensa movimientos")
+    corte = db.query(Corte).filter(Corte.id == corte_id).first()
+    if not corte:
+        raise HTTPException(status_code=404, detail="Corte no encontrado")
+    try:
+        fila = registrar_compensacion(
+            db,
+            admin=actor,
+            corte=corte,
+            concepto=datos.concepto,
+            importe=datos.importe,
+            motivo=datos.motivo,
+            original_uuid=datos.original_uuid,
+            evidencia=datos.evidencia,
+            operacion_uuid=str(datos.operacion_uuid) if datos.operacion_uuid else None,
+        )
+    except OriginalAusente as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    auditar_cambio(
+        db,
+        corte_id=corte.id,
+        actor_id=actor.id,
+        accion=AccionAuditoriaCorte.COMPENSACION,
+        antes={"movimiento_original": datos.original_uuid},
+        despues={"compensacion_uuid": fila.uuid, "importe": str(fila.importe)},
+        motivo=datos.motivo,
+    )
+    db.commit()
+    db.refresh(fila)
+    return _respuesta_movimiento(fila)

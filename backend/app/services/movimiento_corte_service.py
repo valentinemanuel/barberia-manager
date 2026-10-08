@@ -162,6 +162,10 @@ class RevisionResuelta(ValueError):
     """La revisión ya salió de ese estado: conflicto, sin efecto (HTTP 409)."""
 
 
+class OriginalAusente(ValueError):
+    """El movimiento original no existe: sin referencia no hay correctivo (404)."""
+
+
 def _validar_importe_real(importe: Decimal) -> Decimal:
     """Dinero real reconocido: Decimal finito, no negativo, ≤2 decimales."""
     from decimal import Decimal as DecimalT59
@@ -235,3 +239,74 @@ def resolver_revision(
     db.add(compensatoria)
     db.flush()
     return compensatoria
+
+
+def _validar_importe_compensacion(importe: Decimal) -> Decimal:
+    """Ajuste con signo: Decimal finito, no nulo, ≤2 decimales."""
+    from decimal import Decimal as DecimalT60
+
+    if not isinstance(importe, DecimalT60):
+        raise ValueError("El importe de la compensación debe ser Decimal")
+    if not importe.is_finite():
+        raise ValueError("El importe de la compensación debe ser finito")
+    if importe.as_tuple().exponent < -2:
+        raise ValueError("El importe de la compensación debe tener como máximo dos decimales")
+    if importe == DecimalT60("0"):
+        raise ValueError("El importe de la compensación no puede ser cero")
+    return importe
+
+
+def registrar_compensacion(
+    db: Session,
+    *,
+    admin: Usuario,
+    corte: Corte,
+    concepto: ConceptoMovimiento,
+    importe: Decimal,
+    motivo: str,
+    original_uuid: str,
+    evidencia: str | None = None,
+    operacion_uuid: str | None = None,
+) -> MovimientoCorte:
+    """Corrección administrativa sin borrar el original (paquete 9, RF-43).
+
+    Append-only con motivo y referencia inmutable al original. El signo
+    corrige el neto (resta si el original sobrestimó); no representa una
+    salida física de dinero. Sin commit: la UoW la posee el llamador.
+    """
+    if not motivo or not motivo.strip():
+        raise ValueError("La compensación exige motivo")
+    importe_ok = _validar_importe_compensacion(importe)
+    original = (
+        db.query(MovimientoCorte)
+        .filter(
+            MovimientoCorte.corte_id == corte.id,
+            MovimientoCorte.uuid == original_uuid,
+        )
+        .first()
+    )
+    if original is None:
+        raise OriginalAusente("Movimiento original no encontrado")
+    if operacion_uuid is not None:
+        existente = (
+            db.query(MovimientoCorte).filter(MovimientoCorte.uuid == operacion_uuid).first()
+        )
+        if existente is not None:
+            return existente
+    fila = MovimientoCorte(
+        uuid=operacion_uuid or str(uuid4()),
+        corte_id=corte.id,
+        concepto=concepto,
+        tipo=TipoMovimiento.COMPENSACION,
+        importe=importe_ok,
+        autor_id=admin.id,
+        metodo_pago=original.metodo_pago,
+        momento_real=original.momento_real,
+        estado=EstadoMovimiento.ACEPTADO,
+        original_uuid=original.uuid,
+        motivo=motivo.strip(),
+        evidencia=evidencia,
+    )
+    db.add(fila)
+    db.flush()
+    return fila
