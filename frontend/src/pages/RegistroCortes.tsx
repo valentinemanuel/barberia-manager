@@ -243,20 +243,9 @@ export default function RegistroCortes() {
 
       if (!huboRespuesta && usuario) {
         // Sin red: la operación YA quedó durable en la outbox (pendiente
-        // visible); useSync la enviará al reconectar con la misma UUID (T51).
-        // Compat: se conserva además la fila legacy `cortes` hasta que el
-        // sender migre a la outbox en T51.
-        const parte = gananciaCentavos === null ? 0 : gananciaCentavos / 100
-        await db.cortes.add({
-          barbero_id: usuario.id,
-          servicio_id: servicio.id,
-          precio: servicio.precio,
-          porcentaje_barbero: usuario.porcentaje_ganancia,
-          parte_barbero: parte,
-          metodo_pago: metodoPago,
-          fecha: ahora.toISOString(),
-          sincronizado: false,
-        })
+        // visible, corte + abono encadenado); useSync la enviará al
+        // reconectar con la misma UUID (T51/T54). Sin fila legacy duplicada:
+        // el sender v2 es el único que crea el corte en el servidor (RF-32).
         mostrar('info', 'Sin conexión: el corte quedó guardado en el dispositivo y se sincronizará solo.')
         setServicioSeleccionado(null)
         setCobro('pendiente')

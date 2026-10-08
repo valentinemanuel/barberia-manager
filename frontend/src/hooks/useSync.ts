@@ -31,7 +31,7 @@ export function useSync() {
         const pendientesV2 = await db.outboxOperaciones
           .where('actorId')
           .equals(actorId)
-          .filter((o) => o.estado === 'pendiente')
+          .filter((o) => o.estado === 'pendiente' && o.tipo !== 'abono')
           .toArray()
         if (pendientesV2.length > 0) {
           try {
@@ -72,6 +72,12 @@ export function useSync() {
                     corteIdServidor: resultado.corte_id,
                   })
                 }
+              } else if (resultado.estado === 'revision') {
+                await db.outboxOperaciones.update(resultado.id, {
+                  estado: 'revision',
+                  ultimoError: resultado.motivo ?? 'revision',
+                  actualizadoEn: new Date().toISOString(),
+                })
               } else {
                 await db.outboxOperaciones.update(resultado.id, {
                   estado: 'rechazada',
@@ -109,7 +115,9 @@ export function useSync() {
             console.warn('Sync: cambió la cuenta a mitad del envío; descarto resultados tardíos.')
             break
           }
-          const corteOp = await db.outboxOperaciones.get(abono.dependeDe ?? '')
+          const corteOp = await db.outboxOperaciones
+            .filter((o) => o.corteUuid === abono.dependeDe && o.tipo !== 'abono')
+            .first()
           if (!corteOp || corteOp.estado === 'pendiente' || corteOp.estado === 'enviando') {
             continue
           }

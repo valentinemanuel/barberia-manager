@@ -146,6 +146,11 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 ## Spec 002 — paquete 8 redactado (2026-10-07)
 - `tasks.md` con T50–T57 en rama `feat/spec-002-paquete-8-outbox-sync`: outbox Dexie v2 persist-first, push cortes/abonos con UUID obligatoria v2 + estados, exceso/reloj a revisión, aislamiento simplificado por cuenta, cobro inicial offline con resultados individuales, catálogo que no se pierde + PWA sin api-cache, revalidación al sincronizar y regresión. Decisiones del usuario: cortes+abonos, UUID obligatoria v2, simplificado, pull diferido, LWW diferido. Prohibidos: pull RF-55, LWW/RF-40, jornadas, bóveda, upgrades reales. Implementación pendiente de aprobación.
 
+## Spec 002 — paquete 8 implementado y revisado (2026-10-07)
+- T50–T57 en verde + `sdd-reviewer`: **APROBADO PAQUETE 8** con 4 P1 corregidos por la revisión y re-verificados por el coordinador (reloj solo adelantado, lote v2 sin abonos, cadena por `corteUuid`, fin de la doble escritura offline). Backend 299 + frontend 4 node + build OK; `barberia.db` estable (`bd4c32af…`).
+- Deuda no bloqueante registrada: puentes float en el camino nuevo (`toFixed`/`Math.round` + conversor global `Number()`); el cliente typed 002 queda para el paquete UX. P2: `String(9)` vs `Enum` en PostgreSQL, `window.alert` legacy, 202 sin journal, POST online sin UUID.
+- No autoriza paquete 9 ni declara la spec implementada.
+
 ## Recuperación documental (2026-10-05)
 - Recuperado el contenido útil de `b211ee5` en una rama nueva desde `dev`, sin cherry-pick ni reescritura de la rama histórica `feat/mcp-config-y-offline`.
 - Conservados el estado y los pendientes actuales; no se recupera la afirmación antigua de que todos los tests están completos.

@@ -305,6 +305,30 @@ def test_abono_offline_reloj_adelantado_a_revision(client):
     db.close()
 
 
+def test_abono_offline_momento_pasado_no_es_reloj(client):
+    """RF-51: el atraso de sync no invalida; momento de hace 2h se acepta."""
+    import uuid as uuid_lib
+    from datetime import datetime, timedelta
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barb_ab4", Rol.BARBERO)
+    servicio = _crear_servicio(db)
+    token = _token(client, "barb_ab4")
+    corte_id = client.post(
+        "/api/cortes/", headers=_headers(token),
+        json={"servicio_id": servicio.id, "metodo_pago": "efectivo"},
+    ).json()["id"]
+    pasado = (datetime.utcnow() - timedelta(hours=2)).isoformat()
+    r = client.post(
+        "/api/sync/", headers=_headers(token),
+        json={"operaciones": [_abono_v2(str(uuid_lib.uuid4()), corte_id, importe="30.00", momento=pasado)]},
+    )
+    resultado = r.json()["resultados"][0]
+    assert resultado["aceptada"] is True
+    assert resultado["status_code"] == 201
+    db.close()
+
+
 def test_abono_v2_corte_inexistente_404_sin_aplicar(client):
     """T54 (RF-57): abono a corte inexistente se conserva sin aplicar (404)."""
     import uuid as uuid_lib

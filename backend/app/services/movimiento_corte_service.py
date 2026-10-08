@@ -63,8 +63,8 @@ def registrar_abono(
             causa_revision = "exceso"
         if momento_real is not None:
             desvio = (momento_real - datetime.utcnow()).total_seconds()
-            if abs(desvio) > 300:
-                # RF-51: reloj adelantado/atrasado más de cinco minutos.
+            if desvio > 300:
+                # RF-51: solo reloj adelantado >5min; el atraso de sync no invalida.
                 causa_revision = "reloj" if causa_revision is None else causa_revision + "+reloj"
     movimiento = MovimientoCorte(
         uuid=uuid or str(uuid4()),
