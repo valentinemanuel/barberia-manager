@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Literal, Optional
 from uuid import UUID
 import enum
 
@@ -52,6 +52,24 @@ class CorteAnular(BaseModel):
     """Anulación (paquete 7, RF-27): motivo obligatorio para admin en bloqueado."""
 
     motivo: Optional[str] = None
+
+
+class IntervencionResolver(BaseModel):
+    """Resolución manual de una intervención RF-40 (paquete 10)."""
+
+    decision: Literal["aplicar", "descartar"]
+    motivo: str
+
+
+class IntervencionResponse(BaseModel):
+    uuid: str
+    corte_id: int
+    accion: str
+    estado: str
+    causa: str
+
+    class Config:
+        from_attributes = True
 
 
 class CorteResponse(BaseModel):

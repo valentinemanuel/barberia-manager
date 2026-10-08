@@ -439,6 +439,147 @@ def test_sync_corte_servicio_inexistente_a_revision(client):
     db.close()
 
 
+# ---------- T68: sync editar/anular + RF-40 (LWW offline e intervención) ----------
+
+def _editar_v2(uuid_val, corte_id, cambios, instante="2026-10-08T10:00:00", motivo=None):
+    datos = {
+        "operacion_uuid": uuid_val,
+        "corte_id": corte_id,
+        "cambios": cambios,
+        "instante_cambio": instante,
+        "modo_captura": "offline",
+    }
+    if motivo is not None:
+        datos["motivo"] = motivo
+    return {"id": uuid_val, "accion": "editar_corte_v2", "datos": datos}
+
+
+def test_sync_edicion_respeta_lww_con_bases_viejas(client):
+    """T68 (RF-36): edición offline con instante anterior → omitida, sin pisar."""
+    import uuid as uuid_lib
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barb_e68", Rol.BARBERO)
+    servicio = _crear_servicio(db)
+    token = _token(client, "barb_e68")
+    corte_id = client.post(
+        "/api/cortes/", headers=_headers(token),
+        json={"servicio_id": servicio.id, "metodo_pago": "efectivo"},
+    ).json()["id"]
+    db.close()
+    r = client.patch(f"/api/cortes/{corte_id}", headers=_headers(token), json={
+        "metodo_pago": "tarjeta", "instante_cambio": "2026-10-08T11:00:00",
+    })
+    assert r.json()["metodo_pago"] == "tarjeta"
+    r = client.post("/api/sync/", headers=_headers(token), json={"operaciones": [
+        _editar_v2(str(uuid_lib.uuid4()), corte_id, {"metodo_pago": "transferencia"},
+                   instante="2026-10-08T10:00:00"),
+    ]})
+    resultado = r.json()["resultados"][0]
+    assert resultado["aceptada"] is True
+    assert resultado["unidades"]["metodo"] == "omitida"
+    detalle = client.get(f"/api/cortes/{corte_id}", headers=_headers(token)).json()
+    assert detalle["metodo_pago"] == "tarjeta"
+
+
+def test_sync_edicion_tras_bloqueo_a_intervencion_sin_aplicar(client):
+    """T68 (RF-40): llega tras el primer pago → 202 conservada, sin aplicar ni duplicar."""
+    import uuid as uuid_lib
+    from app.models.intervencion_corte import IntervencionCorte
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barb_e68b", Rol.BARBERO)
+    servicio = _crear_servicio(db)
+    token = _token(client, "barb_e68b")
+    corte_id = client.post(
+        "/api/cortes/", headers=_headers(token),
+        json={"servicio_id": servicio.id, "metodo_pago": "efectivo"},
+    ).json()["id"]
+    db.close()
+    assert client.post(
+        f"/api/cortes/{corte_id}/movimientos", headers=_headers(token),
+        json={"concepto": "cliente", "importe": "10.00", "metodo_pago": "efectivo"},
+    ).status_code == 201
+    uuid_val = str(uuid_lib.uuid4())
+    body = {"operaciones": [_editar_v2(uuid_val, corte_id, {"metodo_pago": "tarjeta"})]}
+    r1 = client.post("/api/sync/", headers=_headers(token), json=body)
+    r2 = client.post("/api/sync/", headers=_headers(token), json=body)
+    assert r1.json()["resultados"][0]["estado"] == "pendiente_intervencion"
+    assert r1.json()["resultados"][0]["status_code"] == 202
+    assert r2.json()["resultados"][0]["estado"] == "pendiente_intervencion"
+    detalle = client.get(f"/api/cortes/{corte_id}", headers=_headers(token)).json()
+    assert detalle["metodo_pago"] == "efectivo"
+    db = TestingSessionLocal()
+    assert db.query(IntervencionCorte).filter(IntervencionCorte.uuid == uuid_val).count() == 1
+    db.close()
+
+
+def test_anulacion_no_autorizada_no_terminaliza(client):
+    """T68 (RF-36/40): anular bloqueado como barbero → intervención; el corte sigue activo."""
+    import uuid as uuid_lib
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barb_e68c", Rol.BARBERO)
+    servicio = _crear_servicio(db)
+    token = _token(client, "barb_e68c")
+    corte_id = client.post(
+        "/api/cortes/", headers=_headers(token),
+        json={"servicio_id": servicio.id, "metodo_pago": "efectivo"},
+    ).json()["id"]
+    db.close()
+    assert client.post(
+        f"/api/cortes/{corte_id}/movimientos", headers=_headers(token),
+        json={"concepto": "cliente", "importe": "10.00", "metodo_pago": "efectivo"},
+    ).status_code == 201
+    r = client.post("/api/sync/", headers=_headers(token), json={"operaciones": [{
+        "id": "anula-1", "accion": "anular_corte_v2", "datos": {
+            "operacion_uuid": str(uuid_lib.uuid4()), "corte_id": corte_id,
+            "instante_cambio": "2026-10-08T10:00:00", "modo_captura": "offline",
+        },
+    }]})
+    assert r.json()["resultados"][0]["estado"] == "pendiente_intervencion"
+    detalle = client.get(f"/api/cortes/{corte_id}", headers=_headers(token)).json()
+    assert detalle["anulado_en"] is None
+
+
+def test_admin_resuelve_intervencion_aplicar_y_descartar(client):
+    """T68: el admin aplica con motivo o descarta con motivo (revisión manual)."""
+    import uuid as uuid_lib
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barb_e68d", Rol.BARBERO)
+    _crear_usuario(db, "admin_e68d", Rol.ADMIN)
+    servicio = _crear_servicio(db)
+    token = _token(client, "barb_e68d")
+    token_admin = _token(client, "admin_e68d")
+    corte_id = client.post(
+        "/api/cortes/", headers=_headers(token),
+        json={"servicio_id": servicio.id, "metodo_pago": "efectivo"},
+    ).json()["id"]
+    db.close()
+    assert client.post(
+        f"/api/cortes/{corte_id}/movimientos", headers=_headers(token),
+        json={"concepto": "cliente", "importe": "10.00", "metodo_pago": "efectivo"},
+    ).status_code == 201
+    uuid_a = str(uuid_lib.uuid4())
+    uuid_b = str(uuid_lib.uuid4())
+    client.post("/api/sync/", headers=_headers(token), json={"operaciones": [
+        _editar_v2(uuid_a, corte_id, {"metodo_pago": "tarjeta"}),
+        _editar_v2(uuid_b, corte_id, {"metodo_pago": "transferencia"}),
+    ]})
+    auth_admin = {"Authorization": f"Bearer {token_admin}"}
+    r = client.post(f"/api/cortes/intervenciones/{uuid_a}/resolver",
+                    json={"decision": "aplicar", "motivo": "verificado"}, headers=auth_admin)
+    assert r.status_code == 200
+    assert r.json()["estado"] == "aplicada"
+    r = client.post(f"/api/cortes/intervenciones/{uuid_b}/resolver",
+                    json={"decision": "descartar", "motivo": "ya corregido"}, headers=auth_admin)
+    assert r.status_code == 200
+    assert r.json()["estado"] == "descartada"
+    detalle = client.get(f"/api/cortes/{corte_id}", headers=_headers(token)).json()
+    assert detalle["metodo_pago"] == "tarjeta"
+
+
 def test_post_online_servicio_inactivo_sigue_400(client):
     """T56: el registro online nuevo solo ofrece servicios activos."""
     db = TestingSessionLocal()

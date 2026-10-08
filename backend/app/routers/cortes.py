@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import requerir_admin, obtener_usuario_actual
-from app.models.corte import Corte
+from app.models.corte import Corte, MetodoPago
 from app.models.usuario import Usuario, Rol
 from app.schemas.corte import (
     CobroInicial,
@@ -16,6 +16,8 @@ from app.schemas.corte import (
     CorteEdicionResponse,
     CorteResponse,
     CortePersonal,
+    IntervencionResolver,
+    IntervencionResponse,
 )
 from app.services.corte_service import crear_corte
 from app.services.edicion_corte_service import (
@@ -278,6 +280,89 @@ def editar_corte_endpoint(
     respuesta = CorteEdicionResponse.model_validate(corte)
     respuesta.unidades = unidades
     return respuesta
+
+
+@router.post("/intervenciones/{uuid}/resolver", response_model=IntervencionResponse)
+def resolver_intervencion_endpoint(
+    uuid: str,
+    datos: IntervencionResolver,
+    db: Session = Depends(get_db),
+    actor: Usuario = Depends(obtener_usuario_actual),
+):
+    """Resuelve manualmente una intervención RF-40 (solo admin).
+
+    `aplicar` ejecuta la edición/anulación con las reglas vigentes y
+    motivo obligatorio; `descartar` la cierra sin efecto. Nada se
+    auto-aplica: ambas ramas exigen motivo y dejan journal.
+    """
+    from app.models.intervencion_corte import EstadoIntervencion, IntervencionCorte
+
+    if actor.rol != Rol.ADMIN:
+        raise HTTPException(status_code=403, detail="Solo un admin resuelve intervenciones")
+    intervencion = (
+        db.query(IntervencionCorte).filter(IntervencionCorte.uuid == uuid).first()
+    )
+    if not intervencion:
+        raise HTTPException(status_code=404, detail="Intervención no encontrada")
+    if intervencion.estado != EstadoIntervencion.PENDIENTE:
+        raise HTTPException(status_code=409, detail="La intervención ya fue resuelta")
+    if not datos.motivo or not datos.motivo.strip():
+        raise HTTPException(status_code=400, detail="La resolución exige motivo")
+    if datos.decision == "descartar":
+        intervencion.estado = EstadoIntervencion.DESCARTADA
+        intervencion.motivo_resolucion = datos.motivo.strip()
+        intervencion.resuelta_en = datetime.utcnow()
+        intervencion.resuelta_por = actor.id
+        db.commit()
+        db.refresh(intervencion)
+        return intervencion
+    corte = db.query(Corte).filter(Corte.id == intervencion.corte_id).first()
+    if not corte:
+        raise HTTPException(status_code=404, detail="Corte no encontrado")
+    if corte.anulado_en is not None:
+        raise HTTPException(status_code=409, detail="Corte anulado: no admite edición")
+    try:
+        antes = snapshot_corte(corte)
+        cambios = intervencion.cambios.get("cambios", {}) if isinstance(intervencion.cambios, dict) else {}
+        if intervencion.accion == "anular":
+            corte = aplicar_anulacion(db, corte=corte, actor=actor, motivo=datos.motivo)
+            accion = AccionAuditoriaCorte.ANULACION
+            despues = snapshot_corte(corte)
+        else:
+            metodo = None
+            if cambios.get("metodo_pago") is not None:
+                metodo = MetodoPago(cambios["metodo_pago"])
+            servicio_id = cambios.get("servicio_id")
+            corte, unidades = aplicar_edicion(
+                db,
+                corte=corte,
+                servicio_id=int(servicio_id) if servicio_id is not None else None,
+                metodo=metodo,
+                instante=datetime.utcnow(),
+            )
+            accion = AccionAuditoriaCorte.EDICION
+            despues = {**snapshot_corte(corte), "unidades": unidades,
+                       "intervencion_uuid": intervencion.uuid}
+        auditar_cambio(
+            db,
+            corte_id=corte.id,
+            actor_id=actor.id,
+            accion=accion,
+            antes=antes,
+            despues=despues,
+            motivo=datos.motivo,
+        )
+    except NoEncontrado as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    intervencion.estado = EstadoIntervencion.APLICADA
+    intervencion.motivo_resolucion = datos.motivo.strip()
+    intervencion.resuelta_en = datetime.utcnow()
+    intervencion.resuelta_por = actor.id
+    db.commit()
+    db.refresh(intervencion)
+    return intervencion
 
 
 @router.post("/{corte_id}/anular", response_model=CortePersonal)

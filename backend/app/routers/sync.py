@@ -21,6 +21,8 @@ ACCIONES_PERMITIDAS: dict[str, set[Rol]] = {
     "crear_corte": {Rol.ADMIN, Rol.BARBERO},
     "crear_corte_v2": {Rol.ADMIN, Rol.BARBERO},
     "registrar_abono_v2": {Rol.ADMIN, Rol.BARBERO},
+    "editar_corte_v2": {Rol.ADMIN, Rol.BARBERO},
+    "anular_corte_v2": {Rol.ADMIN, Rol.BARBERO},
     "crear_servicio": {Rol.ADMIN},
     "crear_producto": {Rol.ADMIN},
     "crear_consumible": {Rol.ADMIN},
@@ -54,6 +56,8 @@ class ResultadoOperacion(BaseModel):
     estado: Optional[str] = None
     corte_id: Optional[int] = None
     snapshot: Optional[dict[str, Any]] = None
+    # LWW (paquete 10, T68): unidades aplicadas/omitidas por la edición.
+    unidades: Optional[dict[str, str]] = None
 
 
 class SyncResponse(BaseModel):
@@ -367,6 +371,9 @@ def sincronizar_operaciones(
             if op.accion == "registrar_abono_v2":
                 resultados.append(_sincronizar_abono_v2(db, usuario, op))
                 continue
+            if op.accion in ("editar_corte_v2", "anular_corte_v2"):
+                resultados.append(_sincronizar_edicion_v2(db, usuario, op))
+                continue
             if op.accion == "crear_corte":
                 try:
                     metodo = MetodoPago(op.datos["metodo_pago"])
@@ -434,3 +441,191 @@ def sincronizar_operaciones(
         rechazadas=len(resultados) - aceptadas,
         resultados=resultados,
     )
+
+
+def _uuid_o_error(op: OperacionSync) -> tuple[str | None, ResultadoOperacion | None]:
+    """UUID obligatoria del camino v2 (paquete 8, T51; reutilizada en T68)."""
+    import uuid as uuid_lib
+
+    uuid_val = op.datos.get("operacion_uuid")
+    if not uuid_val:
+        return None, ResultadoOperacion(
+            id=op.id, accion=op.accion, aceptada=False, status_code=400,
+            motivo="falta_uuid",
+            notificacion="La operación v2 exige operacion_uuid.",
+        )
+    try:
+        uuid_lib.UUID(str(uuid_val))
+    except (ValueError, AttributeError, TypeError):
+        return None, ResultadoOperacion(
+            id=op.id, accion=op.accion, aceptada=False, status_code=400,
+            motivo="uuid_invalida",
+            notificacion="La operacion_uuid no es una UUID válida.",
+        )
+    return str(uuid_val), None
+
+
+def _sincronizar_edicion_v2(
+    db: Session, usuario: Usuario, op: OperacionSync
+) -> ResultadoOperacion:
+    """Edición/anulación offline con LWW (paquete 10, T68, RF-36/RF-40).
+
+    Sin bloqueo: aplica con el instante de captura (misma regla que PATCH).
+    Con bloqueo o anulación y origen barbero: conserva la operación
+    pendiente de intervención manual (202), sin aplicarla ni terminalizar.
+    Origen admin sobre bloqueado: aplica con motivo obligatorio.
+    """
+    from datetime import datetime, timezone
+
+    from app.models.corte import Corte, MetodoPago as MetodoEdicion
+    from app.models.intervencion_corte import EstadoIntervencion, IntervencionCorte
+    from app.services.edicion_corte_service import (
+        NoEncontrado as NoEncontradoEdicion,
+    )
+    from app.services.edicion_corte_service import (
+        anular_corte as aplicar_anulacion_sync,
+    )
+    from app.services.edicion_corte_service import (
+        auditar_cambio as auditar_edicion_sync,
+    )
+    from app.services.edicion_corte_service import (
+        editar_corte as aplicar_edicion_sync,
+    )
+    from app.services.edicion_corte_service import (
+        snapshot_corte as snapshot_sync,
+    )
+    from app.models.auditoria_corte import AccionAuditoriaCorte as AccionSync
+    from app.services.movimiento_corte_service import corte_bloqueado
+
+    uuid_val, error = _uuid_o_error(op)
+    if error is not None:
+        return error
+    assert uuid_val is not None
+    try:
+        corte_id = int(op.datos["corte_id"])
+    except (KeyError, TypeError, ValueError) as e:
+        return ResultadoOperacion(
+            id=op.id, accion=op.accion, aceptada=False, status_code=400,
+            motivo=f"datos_invalidos: {e}",
+            notificacion="La operación trae datos inválidos.",
+        )
+    instante_raw = op.datos.get("instante_cambio")
+    try:
+        instante = (
+            datetime.fromisoformat(str(instante_raw))
+            if instante_raw
+            else datetime.utcnow()
+        )
+        if instante.tzinfo is not None:
+            instante = instante.astimezone(timezone.utc).replace(tzinfo=None)
+    except ValueError as e:
+        return ResultadoOperacion(
+            id=op.id, accion=op.accion, aceptada=False, status_code=400,
+            motivo=f"instante_invalido: {e}",
+            notificacion="El instante_cambio no es una fecha válida.",
+        )
+    es_anulacion = op.accion == "anular_corte_v2"
+    cambios = dict(op.datos.get("cambios") or {})
+    motivo = op.datos.get("motivo")
+
+    corte = db.query(Corte).filter(Corte.id == corte_id).first()
+    if not corte:
+        return ResultadoOperacion(
+            id=op.id, accion=op.accion, aceptada=False, status_code=404,
+            motivo="Corte no encontrado", notificacion="Corte no encontrado.",
+        )
+    if usuario.rol != Rol.ADMIN and corte.barbero_id != usuario.id:
+        return ResultadoOperacion(
+            id=op.id, accion=op.accion, aceptada=False, status_code=404,
+            motivo="Corte no encontrado", notificacion="Corte no encontrado.",
+        )
+    if corte.anulado_en is not None:
+        # Terminal: ni la edición tardía ni el replay la eluden (RF-36).
+        return ResultadoOperacion(
+            id=op.id, accion=op.accion, aceptada=False, status_code=409,
+            motivo="Corte anulado: no admite edición",
+            notificacion="El corte está anulado.",
+        )
+    bloqueado = corte_bloqueado(db, corte)
+    if bloqueado and usuario.rol != Rol.ADMIN:
+        existente = (
+            db.query(IntervencionCorte).filter(IntervencionCorte.uuid == uuid_val).first()
+        )
+        if existente is None:
+            causa = "corte_bloqueado" if not es_anulacion else "anulacion_bloqueada"
+            db.add(IntervencionCorte(
+                uuid=uuid_val,
+                corte_id=corte.id,
+                actor_id=usuario.id,
+                accion="anular" if es_anulacion else "editar",
+                cambios={"cambios": cambios, "instante_cambio": instante.isoformat(),
+                         "motivo": motivo},
+                causa=causa,
+                estado=EstadoIntervencion.PENDIENTE,
+            ))
+            db.commit()
+        return ResultadoOperacion(
+            id=op.id, accion=op.accion, aceptada=False, status_code=202,
+            motivo="corte_bloqueado",
+            notificacion="El corte se bloqueó antes de sincronizar; quedó pendiente de intervención.",
+            estado="pendiente_intervencion", corte_id=corte.id,
+        )
+    if bloqueado and not motivo:
+        return ResultadoOperacion(
+            id=op.id, accion=op.accion, aceptada=False, status_code=400,
+            motivo="Corregir un corte bloqueado exige motivo",
+            notificacion="Corregir un corte bloqueado exige motivo.",
+        )
+    try:
+        if es_anulacion:
+            antes = snapshot_sync(corte)
+            aplicar_anulacion_sync(db, corte=corte, actor=usuario, motivo=motivo)
+            auditar_edicion_sync(
+                db, corte_id=corte.id, actor_id=usuario.id,
+                accion=AccionSync.ANULACION, antes=antes,
+                despues=snapshot_sync(corte), motivo=motivo,
+            )
+            db.commit()
+            return ResultadoOperacion(
+                id=op.id, accion=op.accion, aceptada=True, status_code=200,
+                estado="aceptada", corte_id=corte.id,
+                snapshot={"anulado_en": corte.anulado_en.isoformat() if corte.anulado_en else None},
+            )
+        metodo = None
+        if cambios.get("metodo_pago") is not None:
+            try:
+                metodo = MetodoEdicion(cambios["metodo_pago"])
+            except ValueError:
+                metodo = MetodoEdicion.EFECTIVO
+        servicio_id = cambios.get("servicio_id")
+        antes = snapshot_sync(corte)
+        corte, unidades = aplicar_edicion_sync(
+            db, corte=corte,
+            servicio_id=int(servicio_id) if servicio_id is not None else None,
+            metodo=metodo, instante=instante,
+        )
+        auditar_edicion_sync(
+            db, corte_id=corte.id, actor_id=usuario.id,
+            accion=AccionSync.EDICION, antes=antes,
+            despues={**snapshot_sync(corte), "unidades": unidades,
+                     "operacion_uuid": uuid_val},
+            motivo=motivo,
+        )
+        db.commit()
+        return ResultadoOperacion(
+            id=op.id, accion=op.accion, aceptada=True, status_code=200,
+            estado="aceptada", corte_id=corte.id, unidades=unidades,
+            snapshot={"metodo_pago": str(corte.metodo_pago), "precio": str(corte.precio)},
+        )
+    except NoEncontradoEdicion as e:
+        db.rollback()
+        return ResultadoOperacion(
+            id=op.id, accion=op.accion, aceptada=False, status_code=404,
+            motivo=str(e), notificacion=str(e),
+        )
+    except (ValueError, KeyError) as e:
+        db.rollback()
+        return ResultadoOperacion(
+            id=op.id, accion=op.accion, aceptada=False, status_code=400,
+            motivo=str(e), notificacion=f"Edición rechazada: {e}",
+        )

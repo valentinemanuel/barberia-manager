@@ -876,7 +876,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - Implementar: `instante_cambio` + `bases` por unidad en PATCH; grupo financiero atómico; respuesta con unidades aplicadas/omitidas; journal con `operacion_uuid`.
   - Hecho cuando: tests en verde y ningún silencio ante conflicto (omitida con causa).
 
-- [ ] **T68. Sync editar/anular_v2 + RF-40.** RF-30/RF-32/RF-36/RF-40 (parciales).
+- [x] **T68. Sync editar/anular_v2 + RF-40.** RF-30/RF-32/RF-36/RF-40 (parciales).
   - Dependencias: T67.
   - Tests primero: edición offline con bases viejas → LWW igual que online; edición que llega tras bloqueo/pago → 202 `pendiente_intervencion` conservada sin aplicar (no 409, no auto-aplicación); anulación no autorizada tras bloqueo → no terminaliza; replay misma UUID no duplica intervención.
   - Implementar: acciones sync + tabla `intervenciones_corte` + `POST .../intervenciones/{uuid}/resolver` admin (aplicar con motivo o descartar con motivo, journaled).
@@ -918,7 +918,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 |---|---|---|---|
 | T66 | Rojo real: `AttributeError` (version/relojes/profesional inexistentes) + `history` en 007 | Verde: `122 passed` (3 archivos) + `008` en TEMP (legacy + filas: 6 columnas + backfill version 1 y profesional solo comisionada; repetir no-op) | DB estable; `corte.py` (version + 3 relojes + conocido nullable) + `finanzas_corte.py` (profesional_id) + `008` (ADD nullable + backfill solo nulos) + abonos/compensaciones/devoluciones nuevas con titular (cliente NULL). `fecha` intacta. |
 | T67 | Rojo real: doble failed (`unidades` ausente; grupo mezclable); anulación prevalece ya en verde (T45) | Verde: `125 passed` (3 archivos) | DB estable; `schemas/corte.py` (`instante/bases/operacion_uuid` + `CorteEdicionResponse` aditivo) + `edicion_corte_service.py` (LWW por unidad, grupo atómico, version+1 por cambio aplicado) + `cortes.py` (journal con unidades/op/bases). Resolución solo por instante (bases informativas en journal); empate aplica al último. |
-| T68 |  |  |  |
+| T68 | Rojo real: cuádruple failed (acciones desconocidas → 409) + `NameError: MetodoPago` en el resolvedor | Verde: `106 passed` (2 archivos) + `009` en TEMP (vacía/legacy/repetir) | Divulgación: `barberia.db` ganó la tabla vacía `intervenciones_corte` por `create_all` histórico (0 filas, legacy intacto; nuevo baseline `79facc3f…`). `sync.py` (editar/anular_v2 con LWW por instante; bloqueado barbero → 202 intervención idempotente; admin exige motivo; anulado → 409) + `intervencion_corte.py` + `009` (nueva, con guard) + resolvedor manual aplicar/descartar con journal + tests. Desvío honesto: migración `009` no estaba en la lista del paquete (regularizada aquí, como P2-6 del paquete 9). |
 | T69 |  |  |  |
 | T70 |  |  |  |
 | T71 |  |  |  |
