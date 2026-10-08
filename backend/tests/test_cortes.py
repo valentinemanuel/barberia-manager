@@ -1971,3 +1971,81 @@ def test_compensacion_exige_motivo_original_y_admin(client):
         "concepto": "cliente", "importe": "0.00",
         "motivo": "cero", "original_uuid": original_uuid,
     }).status_code == 400
+
+
+def _devolver(client, admin_login, corte_id, body):
+    return client.post(
+        f"/api/cortes/{corte_id}/devoluciones",
+        json=body,
+        headers={"Authorization": f"Bearer {_token_para(client, admin_login)}"},
+    )
+
+
+def test_devolucion_limite_y_capacidad(client):
+    """T61 (RF-41): dentro de capacidad → 201 y reduce neto; exceso → 400."""
+    corte_id = _corte_para_abonos(client, "barbero_t61")
+    token = _token_para(client, "barbero_t61")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t61", Rol.ADMIN)
+    db.close()
+    assert _abonar(client, token, corte_id, "cliente", 100).status_code == 201
+    r = _devolver(client, "admin_t61", corte_id, {
+        "concepto": "cliente", "importe": "30.00", "motivo": "cobro de más",
+    })
+    assert r.status_code == 201
+    assert r.json()["tipo"] == "devolucion"
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["abonado"] == "70.00"
+    assert _devolver(client, "admin_t61", corte_id, {
+        "concepto": "cliente", "importe": "80.00", "motivo": "exceso",
+    }).status_code == 400
+
+
+def test_devolucion_concurrente_solo_una_consume(client):
+    """T61: dos devoluciones de 30 sobre capacidad 40 → una 201 y otra 400."""
+    import concurrent.futures
+
+    corte_id = _corte_para_abonos(client, "barbero_t61b")
+    token = _token_para(client, "barbero_t61b")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t61b", Rol.ADMIN)
+    db.close()
+    assert _abonar(client, token, corte_id, "cliente", 100).status_code == 201
+    assert _devolver(client, "admin_t61b", corte_id, {
+        "concepto": "cliente", "importe": "60.00", "motivo": "primera",
+    }).status_code == 201
+    cuerpo = {"concepto": "cliente", "importe": "30.00", "motivo": "carrera"}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        estados = sorted(
+            pool.map(lambda _: _devolver(client, "admin_t61b", corte_id, cuerpo).status_code, range(2))
+        )
+    assert estados == [201, 400]
+
+
+def test_devolucion_reintento_y_permisos(client):
+    """T61: misma UUID no duplica; sin motivo → 400; barbero → 403."""
+    import uuid as uuid_lib
+    from app.models.finanzas_corte import MovimientoCorte as MovimientoT61
+
+    corte_id = _corte_para_abonos(client, "barbero_t61c")
+    token = _token_para(client, "barbero_t61c")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t61c", Rol.ADMIN)
+    db.close()
+    assert _abonar(client, token, corte_id, "cliente", 100).status_code == 201
+    uuid_val = str(uuid_lib.uuid4())
+    cuerpo = {
+        "concepto": "cliente", "importe": "10.00", "motivo": "ajuste",
+        "operacion_uuid": uuid_val,
+    }
+    assert _devolver(client, "admin_t61c", corte_id, cuerpo).status_code == 201
+    assert _devolver(client, "admin_t61c", corte_id, cuerpo).status_code == 201
+    db = TestingSessionLocal()
+    assert db.query(MovimientoT61).filter(MovimientoT61.uuid == uuid_val).count() == 1
+    db.close()
+    assert _devolver(client, "admin_t61c", corte_id, {
+        "concepto": "cliente", "importe": "5.00", "motivo": "",
+    }).status_code == 400
+    assert _devolver(client, "barbero_t61c", corte_id, {
+        "concepto": "cliente", "importe": "5.00", "motivo": "m",
+    }).status_code == 403

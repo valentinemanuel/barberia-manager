@@ -18,8 +18,10 @@ from app.services.edicion_corte_service import auditar_cambio
 from app.services.movimiento_corte_service import (
     OriginalAusente,
     RevisionResuelta,
+    _candado_devolucion,
     registrar_abono,
     registrar_compensacion,
+    registrar_devolucion,
     resolver_revision,
     saldos_corte,
 )
@@ -282,5 +284,66 @@ def crear_compensacion(
         motivo=datos.motivo,
     )
     db.commit()
+    db.refresh(fila)
+    return _respuesta_movimiento(fila)
+
+
+class DevolucionCrear(BaseModel):
+    """Devolución admin de dinero real (paquete 9, RF-41/RF-43)."""
+
+    concepto: ConceptoMovimiento
+    importe: Decimal
+    motivo: str
+    operacion_uuid: Optional[UUID] = None
+
+
+@router.post(
+    "/{corte_id}/devoluciones",
+    response_model=MovimientoResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def crear_devolucion(
+    corte_id: int,
+    datos: DevolucionCrear,
+    db: Session = Depends(get_db),
+    actor: Usuario = Depends(obtener_usuario_actual),
+):
+    """Devuelve dinero reconocido del concepto (solo admin).
+
+    Limitada a la capacidad (reconocido no devuelto); el check + inserción
+    + commit ocurren bajo candado de proceso. Vale sobre anulados (RF-46).
+    """
+    if actor.rol != Rol.ADMIN:
+        raise HTTPException(status_code=403, detail="Solo un admin devuelve dinero")
+    corte = db.query(Corte).filter(Corte.id == corte_id).first()
+    if not corte:
+        raise HTTPException(status_code=404, detail="Corte no encontrado")
+    try:
+        with _candado_devolucion:
+            from app.services.movimiento_corte_service import capacidad_devolucion
+
+            capacidad_antes = capacidad_devolucion(db, corte, datos.concepto)
+            fila = registrar_devolucion(
+                db,
+                admin=actor,
+                corte=corte,
+                concepto=datos.concepto,
+                importe=datos.importe,
+                motivo=datos.motivo,
+                operacion_uuid=str(datos.operacion_uuid) if datos.operacion_uuid else None,
+            )
+            auditar_cambio(
+                db,
+                corte_id=corte.id,
+                actor_id=actor.id,
+                accion=AccionAuditoriaCorte.DEVOLUCION,
+                antes={"capacidad": str(capacidad_antes)},
+                despues={"devolucion_uuid": fila.uuid, "importe": str(fila.importe)},
+                motivo=datos.motivo,
+            )
+            db.commit()
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     db.refresh(fila)
     return _respuesta_movimiento(fila)

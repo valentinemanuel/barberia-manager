@@ -779,7 +779,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - Implementar: `registrar_compensacion` + endpoint admin; validación de concepto y signo contra el original.
   - Hecho cuando: tests en verde y el original nunca se edita ni borra.
 
-- [ ] **T61. Devolución explícita con capacidad por concepto.** RF-41/RF-43 (parciales).
+- [x] **T61. Devolución explícita con capacidad por concepto.** RF-41/RF-43 (parciales).
   - Dependencias: T58–T60.
   - Tests primero: devolución ≤ dinero reconocido no devuelto → 201 y reduce capacidad; devolución superior → 400; dos devoluciones concurrentes sobre capacidad exacta → solo una consume (test de carrera con reintentos); reintento misma UUID no consume dos veces.
   - Implementar: `capacidad = reconocido − devoluciones` por corte+concepto con lock mínimo (serializar por corte+concepto) + `unique(operacion)` en la devolución.
@@ -816,7 +816,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 | T58 | Rojo real: triple `AttributeError` (COMPENSACION/DEVOLUCION/excedente inexistentes) + `history` en 006 | Verde: `109 passed` (3 archivos) + `007` en TEMP (legacy + 1 fila: columnas agregadas, fila preservada) | DB estable (`bd4c32af…`); `finanzas_corte.py` (tipos + `original_uuid/motivo/evidencia` nullable) + `007_correctivos_corte.py` + `movimiento_corte_service.py` (`neto` = abonos + compensaciones con signo − devoluciones, solo aceptados; `excedente` aditivo, `restante` intacto) + `SaldoConcepto.excedente` (default, compat). |
 | T59 | Rojo real: triple 404 (sin ruta resolver) | Verde: `112 passed` (3 archivos) | DB estable; `movimiento_corte_service.py` (`resolver_revision` + `RevisionResuelta`: real acepta original intacto; erróneo crea compensatoria +real con referencia o solo traza si 0; motivo obligatorio) + `movimientos_corte.py` (POST resolver solo admin 403, journal RESOLUCION misma UoW, `tipo/motivo/original_uuid/evidencia` en respuesta) + `auditoria_corte.py` (acciones correctivas) + `test_cortes.py`. Sin mutar importes ni UUID originales. |
 | T60 | Rojo real: doble 404 (sin ruta compensaciones) | Verde: `91 passed` (2 archivos) | DB estable; `movimiento_corte_service.py` (`registrar_compensacion` + `OriginalAusente`: motivo obligatorio, importe con signo no nulo, referencia exigida, idempotente por UUID) + `movimientos_corte.py` (POST solo admin 403, journal COMPENSACION, helper `_respuesta_movimiento` que elimina triplicación) + `test_cortes.py`. Original intacto; correctivo ya vale sobre anulados (base T62). |
-| T61 |  |  |  |
+| T61 | Rojo real: triple 404 (sin ruta devoluciones) | Verde: `94 passed` (2 archivos, incluye carrera con threads) | DB estable; `movimiento_corte_service.py` (`capacidad_devolucion` = neto no negativo + `registrar_devolucion` con motivo/capacidad/idempotencia + `_candado_devolucion` de proceso) + `movimientos_corte.py` (POST solo admin, UoW con candado + journal con capacidad real, `rollback` en error) + `test_cortes.py` (límite, carrera 201+400 determinista, replay, permisos). Multi-worker/PG exigirá locks de fila (deuda explícita). |
 | T62 |  |  |  |
 | T63 |  |  |  |
 | T64 |  |  |  |

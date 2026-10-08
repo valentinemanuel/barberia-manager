@@ -2,6 +2,7 @@
 
 Sin commit: la unidad de trabajo la posee el llamador.
 """
+import threading
 from datetime import datetime
 from decimal import Decimal
 from uuid import uuid4
@@ -18,6 +19,13 @@ from app.models.finanzas_corte import (
 from app.models.usuario import Usuario
 from app.models.corte import Corte
 from app.services.dinero_cortes import validar_importe_abono
+
+
+# Serialización mínima de devoluciones (paquete 9, T61, RF-41 parcial):
+# el check de capacidad + inserción + commit ocurren bajo este candado
+# (el endpoint lo mantiene durante toda la UoW). Solo protege un proceso;
+# multi-worker/PostgreSQL exigirá locks de fila (protocolo del plan §3).
+_candado_devolucion = threading.Lock()
 
 
 def registrar_abono(
@@ -306,6 +314,65 @@ def registrar_compensacion(
         original_uuid=original.uuid,
         motivo=motivo.strip(),
         evidencia=evidencia,
+    )
+    db.add(fila)
+    db.flush()
+    return fila
+
+
+def capacidad_devolucion(
+    db: Session, corte: Corte, concepto: ConceptoMovimiento
+) -> Decimal:
+    """Dinero reconocido no devuelto del concepto (paquete 9, T61, RF-41).
+
+    Capacidad por concepto (decisión del paquete): neto aceptado
+    (abonos + compensaciones con signo − devoluciones), nunca negativo.
+    """
+    clave = "cliente" if concepto == ConceptoMovimiento.CLIENTE else "comision"
+    neto = saldos_corte(db, corte)[clave]["abonado"]
+    return max(neto, Decimal("0"))
+
+
+def registrar_devolucion(
+    db: Session,
+    *,
+    admin: Usuario,
+    corte: Corte,
+    concepto: ConceptoMovimiento,
+    importe: Decimal,
+    motivo: str,
+    operacion_uuid: str | None = None,
+) -> MovimientoCorte:
+    """Devolución explícita de dinero real (paquete 9, RF-41/RF-43 parcial).
+
+    Limitada a la capacidad del concepto; consume esa capacidad al
+    aceptarse. No genera devolución automática nada: siempre explícita
+    con motivo. Sin commit: la UoW (con candado) la posee el llamador.
+    """
+    if not motivo or not motivo.strip():
+        raise ValueError("La devolución exige motivo")
+    try:
+        importe_ok = validar_importe_abono(importe)
+    except (TypeError, ValueError) as error:
+        raise ValueError(str(error)) from error
+    if operacion_uuid is not None:
+        existente = (
+            db.query(MovimientoCorte).filter(MovimientoCorte.uuid == operacion_uuid).first()
+        )
+        if existente is not None:
+            return existente
+    if importe_ok > capacidad_devolucion(db, corte, concepto):
+        raise ValueError("La devolución supera el dinero reconocido no devuelto")
+    fila = MovimientoCorte(
+        uuid=operacion_uuid or str(uuid4()),
+        corte_id=corte.id,
+        concepto=concepto,
+        tipo=TipoMovimiento.DEVOLUCION,
+        importe=importe_ok,
+        autor_id=admin.id,
+        metodo_pago=MetodoPago.EFECTIVO,
+        estado=EstadoMovimiento.ACEPTADO,
+        motivo=motivo.strip(),
     )
     db.add(fila)
     db.flush()
