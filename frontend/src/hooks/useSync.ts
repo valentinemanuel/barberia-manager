@@ -3,6 +3,7 @@ import { useOnlineStatus } from './useOnlineStatus'
 import { db } from '../services/db'
 import api from '../services/api'
 import { useAuthStore } from '../store/authStore'
+import { esRespuestaVigente, leerSesionNavegador } from '../services/sesion'
 
 export function useSync() {
   const online = useOnlineStatus()
@@ -21,7 +22,10 @@ export function useSync() {
       // Camino v2 (paquete 8, T51): outbox por cuenta con UUID obligatoria.
       // La cuenta propietaria es el actor actual; solo se envían sus
       // pendientes (el aislamiento total A/B llega en T53).
+      // Foto de sesión (T53, RF-33): si cambia la cuenta a mitad del envío,
+      // los resultados tardíos se descartan sin tocar la cuenta nueva.
       const actorId = useAuthStore.getState().usuario?.id ?? null
+      const sesionCapturada = leerSesionNavegador()
       if (actorId !== null) {
         const pendientesV2 = await db.outboxOperaciones
           .where('actorId')
@@ -51,6 +55,10 @@ export function useSync() {
               })),
             })
             for (const resultado of respuesta.data.resultados ?? []) {
+              if (!esRespuestaVigente(sesionCapturada, leerSesionNavegador())) {
+                console.warn('Sync: cambió la cuenta a mitad del envío; descarto resultados tardíos.')
+                break
+              }
               if (resultado.aceptada) {
                 await db.outboxOperaciones.update(resultado.id, {
                   estado: 'aceptada',
@@ -86,9 +94,13 @@ export function useSync() {
       // que no entran al índice y where('sincronizado').equals(0) devuelve
       // siempre [] (verificado: 0 vs 1 con filter). Sin este filtro, los cortes
       // encolados offline nunca se sincronizan.
+      // Camino legacy (T53, RF-33): solo pendientes atribuibles a la cuenta
+      // actual. Las filas v1 se atribuyen por `barbero_id` (sin autor
+      // distinto: limitación documentada); las v2 viajan por outbox (arriba).
+      const actorLegacy = useAuthStore.getState().usuario?.id ?? null
       const cortesPendientes = (
         await db.cortes.filter((c) => !c.sincronizado).toArray()
-      ).filter((c) => !c.rechazado)
+      ).filter((c) => !c.rechazado && (actorLegacy === null || c.barbero_id === actorLegacy))
 
       if (cortesPendientes.length > 0) {
         try {
@@ -105,6 +117,10 @@ export function useSync() {
           const resultados = respuesta.data.resultados ?? []
           const rechazadas: string[] = []
           for (const resultado of resultados) {
+            if (!esRespuestaVigente(sesionCapturada, leerSesionNavegador())) {
+              console.warn('Sync: cambió la cuenta a mitad del envío; descarto resultados tardíos.')
+              break
+            }
             const corteLocal = cortesPendientes.find(
               (c) => String(c.id) === String(resultado.id)
             )

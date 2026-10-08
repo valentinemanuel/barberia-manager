@@ -9,10 +9,14 @@ const api = axios.create({
 })
 
 api.interceptors.request.use((config) => {
-  const token = useAuthStore.getState().token
+  const { token, usuario } = useAuthStore.getState()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
+  // Foto por solicitud (T53, RF-33): un 401 tardío de la cuenta anterior
+  // no puede cerrar la sesión de la cuenta nueva.
+  const foto = { token, titularId: usuario?.id ?? null }
+  ;(config as unknown as { __sesionFoto?: typeof foto }).__sesionFoto = foto
   return config
 })
 
@@ -27,8 +31,14 @@ api.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401) {
-      useAuthStore.getState().logout()
-      window.location.href = '/'
+      const foto = (error.config as unknown as { __sesionFoto?: { token: string | null } })
+        ?.__sesionFoto
+      const actual = useAuthStore.getState()
+      // Solo desloguea si el token rechazado sigue siendo el vigente.
+      if (foto && foto.token === actual.token) {
+        actual.logout()
+        window.location.href = '/'
+      }
     }
     return Promise.reject(error)
   }
