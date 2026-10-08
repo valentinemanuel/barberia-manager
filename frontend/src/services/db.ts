@@ -69,10 +69,18 @@ export interface OperacionCorteLocal {
   actualizadoEn: string
   // Abono encadenado (T54, RF-37/RF-57): solo en filas tipo abono.
   // Campos opcionales: sin cambio de índices ni versión Dexie.
-  tipo?: 'corte' | 'abono'
+  tipo?: 'corte' | 'abono' | 'edicion' | 'anulacion'
   concepto?: 'cliente' | 'comision'
   importeCentavos?: number
   dependeDe?: string
+  // Edición/anulación offline (T72, RF-36/RF-40): acción y cambios
+  // explícitos por unidad; el instante va en instanteCambio.
+  accion?: 'editar' | 'anular'
+  cambios?: { servicio_id?: number; metodo_pago?: string }
+  // Id servidor conocido (T72): ediciones encoladas desde datos ya
+  // sincronizados (historial) conocen el corte; si falta, se resuelve
+  // por cadena corteUuid como en T54.
+  corteIdServidor?: number
 }
 
 export interface MapeoOperacionLocal {

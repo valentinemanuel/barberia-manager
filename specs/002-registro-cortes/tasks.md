@@ -900,7 +900,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - Implementar: `deuda/comision_conocida` en saldos/DTOs + `POST .../evidencia-financiera` solo admin.
   - Hecho cuando: tests en verde y ningún histórico inventa deuda.
 
-- [ ] **T72. Frontend: edición offline + estados.** RF-28–30/RF-57 (parciales), RNF-4.
+- [x] **T72. Frontend: edición offline + estados.** RF-28–30/RF-57 (parciales), RNF-4.
   - Dependencias: T67–T68.
   - Tests primero (node, patrón T50–T64): `crearOperacionEdicion/Anulacion` (UUID + instante único + bases); `npm run build` en verde.
   - Implementar: outbox + sender con cadena + mini-form de corrección en MisSaldos (servicio/método sobre no bloqueados) + estados (omitida/intervención/desconocido/justificantes visibles).
@@ -922,5 +922,5 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 | T69 | Rojo real: triple failed (422 sin `barbero_id/momento_real` en schema) | Verde: `132 passed` (3 archivos) | DB estable; `schemas/corte.py` (`barbero_id/momento_real`) + `edicion_corte_service.py` (barbero entra al grupo financiero: precio conservado + % nuevo; momento con reloj propio) + `cortes.py` (403 barbero reasigna, 400 barbero fecha / futuro / sin motivo) + `saldos` comisión solo del titular vigente (cliente intacto; sin regresiones: filas API siempre con profesional). Inactivo con % permitido (sin check de activo, RF-56). |
 | T70 | Rojo real: 404 sin listado (revocación ya en verde por titularidad T69) | Verde: `134 passed` (3 archivos) | DB estable; `cortes.py` (GET `/mi/justificantes` por `profesional_id`, antes de `/{corte_id}`) + `schemas/corte.py` (`JustificanteResponse` sin titular ni ajenos) + `test_cortes.py` (404 + historial limpio + justificantes propios/detector/B vacío). Outbox local ya aísla por actor (T53, sin código nuevo). |
 | T71 | Rojo real: doble 404 (sin endpoint evidencia) | Verde: `136 passed` (3 archivos) | DB estable; `movimientos_corte.py` (`conocido` en DTO) + `movimiento_corte_service.py` (desconocido: sin restante/excedente, importes visibles, fecha intacta) + `cortes.py` (POST evidencia solo admin 403 + journal EVIDENCIA) + `schemas/auditoria` (acción EVIDENCIA, sin migración en SQLite) + tests. Nulo = conocido (filas nuevas siempre conocidas). |
-| T72 |  |  |  |
+| T72 | Rojo real: `ROJO T72: faltan crearOperacionEdicion/Anulacion` (exit 1) | Verde: `VERDE T72` + T50/T54 + `npm run build` OK (exit 0) | Solo frontend: `operacionesCortes.ts` (edición con cambios validados + anulación terminal) + `scripts/t72-test.mjs` + `db.ts` (`edicion/anulacion` + `corteIdServidor`, sin bump) + `useSync.ts` (sender con id conocido o cadena + 202→revisión) + `MisSaldos.tsx` (mini-form método + anular con confirm + badge desconocido + justificantes). Sin `any`; sin aritmética float nueva. |
 | T73 |  |  |  |
