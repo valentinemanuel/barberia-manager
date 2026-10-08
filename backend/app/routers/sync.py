@@ -128,9 +128,24 @@ def _sincronizar_corte_v2(
             motivo=f"datos_invalidos: {e}",
             notificacion="La operación trae datos inválidos.",
         )
+    from app.models.servicio import Servicio as ServicioSync
+
+    if db.query(ServicioSync).filter(ServicioSync.id == servicio_id).first() is None:
+        # RF-56: sin valores recuperables se conserva para revisión
+        # administrativa, sin inventar valores ni identidad.
+        return ResultadoOperacion(
+            id=op.id,
+            accion=op.accion,
+            aceptada=False,
+            status_code=202,
+            motivo="servicio_inexistente",
+            notificacion="El servicio ya no existe; la operación quedó en revisión.",
+            estado="revision",
+            snapshot=None,
+        )
 
     def _efecto_v2():
-        creado = crear_corte(db, usuario, servicio_id, metodo)
+        creado = crear_corte(db, usuario, servicio_id, metodo, aceptar_inactivo=True)
         return {
             "corte_id": creado.id,
             "estado": "aceptada",

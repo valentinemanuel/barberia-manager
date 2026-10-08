@@ -369,3 +369,63 @@ def test_crear_corte_v2_conflicto_misma_uuid_distinto_payload_409(client):
     assert resultado["aceptada"] is False
     assert resultado["status_code"] == 409
     db.close()
+
+
+# ---------- T56: revalidación al sincronizar (RF-31/RF-34/RF-56) ----------
+
+def test_sync_corte_servicio_desactivado_se_acepta_con_valores_actuales(client):
+    """T56 (RF-31): desactivado después del registro offline no invalida."""
+    import uuid as uuid_lib
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barb_rv1", Rol.BARBERO)
+    servicio = _crear_servicio(db)
+    token = _token(client, "barb_rv1")
+    servicio.activo = False
+    db.commit()
+    r = client.post(
+        "/api/sync/", headers=_headers(token),
+        json={"operaciones": [_op_v2(str(uuid_lib.uuid4()), servicio.id)]},
+    )
+    resultado = r.json()["resultados"][0]
+    assert resultado["aceptada"] is True
+    assert resultado["snapshot"]["precio"] == "100.00"
+    db.close()
+
+
+def test_sync_corte_servicio_inexistente_a_revision(client):
+    """T56 (RF-56): sin valores recuperables → revisión, sin inventar nada."""
+    import uuid as uuid_lib
+    from app.models.corte import Corte
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barb_rv2", Rol.BARBERO)
+    _crear_servicio(db)
+    token = _token(client, "barb_rv2")
+    r = client.post(
+        "/api/sync/", headers=_headers(token),
+        json={"operaciones": [_op_v2(str(uuid_lib.uuid4()), 9999)]},
+    )
+    resultado = r.json()["resultados"][0]
+    assert resultado["estado"] == "revision"
+    assert resultado["status_code"] == 202
+    db2 = TestingSessionLocal()
+    assert db2.query(Corte).count() == 0
+    db2.close()
+    db.close()
+
+
+def test_post_online_servicio_inactivo_sigue_400(client):
+    """T56: el registro online nuevo solo ofrece servicios activos."""
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barb_rv3", Rol.BARBERO)
+    servicio = _crear_servicio(db)
+    token = _token(client, "barb_rv3")
+    servicio.activo = False
+    db.commit()
+    r = client.post(
+        "/api/cortes/", headers=_headers(token),
+        json={"servicio_id": servicio.id, "metodo_pago": "efectivo"},
+    )
+    assert r.status_code == 400
+    db.close()
