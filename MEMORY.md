@@ -156,6 +156,11 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 - P2 no bloqueantes (ver cierre en tasks): erroneo re-ejecutable sin UUID, compensación positiva sin evidencia, replay real→409, estado pagado en anulado-sin-dinero, concepto vs original sin validar, deuda float-display heredada.
 - No autoriza paquete 10 ni declara la spec implementada.
 
+## Spec 002 — paquete 10 implementado y revisado (2026-10-08)
+- T66–T73 en verde + `sdd-reviewer`: **APROBADO PAQUETE 10** sin correcciones (re-ejecutó 140 + 22 + 167 + 6 node + build; migraciones en TEMP; aritmética y códigos verificados). `barberia.db` estable (`79facc3f…`, solo tabla vacía 009 por `create_all`).
+- P2 no bloqueantes (ver cierre en tasks): bases/version informativas, empate sin tiebreak, aplicar-intervención gana LWW, backfill 008 ante create_all, resúmenes sin desconocido, deudas heredadas paquete 9.
+- No autoriza paquete 11 ni declara la spec implementada.
+
 ## Recuperación documental (2026-10-05)
 - Recuperado el contenido útil de `b211ee5` en una rama nueva desde `dev`, sin cherry-pick ni reescritura de la rama histórica `feat/mcp-config-y-offline`.
 - Conservados el estado y los pendientes actuales; no se recupera la afirmación antigua de que todos los tests están completos.

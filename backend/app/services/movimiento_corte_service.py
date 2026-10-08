@@ -85,6 +85,9 @@ def registrar_abono(
         momento_real=momento_real,
         estado=EstadoMovimiento.REVISION if causa_revision else EstadoMovimiento.ACEPTADO,
         motivo_revision=causa_revision,
+        # Titular del dinero (paquete 10, T66): la comisión pertenece al
+        # titular del corte, no al autor del registro; la deuda es del corte.
+        profesional_id=corte.barbero_id if concepto == ConceptoMovimiento.COMISION else None,
     )
     db.add(movimiento)
     db.flush()
@@ -142,6 +145,12 @@ def saldos_corte(db: Session, corte: Corte) -> dict:
     )
     neto = {ConceptoMovimiento.CLIENTE: Decimal("0"), ConceptoMovimiento.COMISION: Decimal("0")}
     for movimiento in movimientos:
+        if movimiento.concepto == ConceptoMovimiento.COMISION:
+            # La comisión pertenece a su profesional (paquete 10, RF-47):
+            # filas de un titular previo no se trasladan ficticiamente al
+            # nuevo; la deuda del cliente pertenece al corte y no cambia.
+            if movimiento.profesional_id != corte.barbero_id:
+                continue
         if movimiento.tipo == TipoMovimiento.DEVOLUCION:
             neto[movimiento.concepto] -= movimiento.importe
         else:
@@ -153,12 +162,34 @@ def saldos_corte(db: Session, corte: Corte) -> dict:
     else:
         obligacion_cliente = corte.precio
         obligacion_comision = corte.parte_barbero
-    return {
+    saldos = {
         "cliente": calcular_saldo(obligacion_cliente, neto[ConceptoMovimiento.CLIENTE]),
         "comision": calcular_saldo(
             obligacion_comision, neto[ConceptoMovimiento.COMISION]
         ),
     }
+    # Históricos sin información (paquete 10, RF-44, T71): el concepto se
+    # muestra como desconocido sin inventar deuda ni excedente; conserva
+    # los importes registrados y nunca sustituye fechas.
+    if corte.deuda_conocida is False:
+        saldos["cliente"].update({
+            "restante": Decimal("0.00"),
+            "excedente": Decimal("0.00"),
+            "estado": "desconocido",
+            "conocido": False,
+        })
+    else:
+        saldos["cliente"]["conocido"] = True
+    if corte.comision_conocida is False:
+        saldos["comision"].update({
+            "restante": Decimal("0.00"),
+            "excedente": Decimal("0.00"),
+            "estado": "desconocido",
+            "conocido": False,
+        })
+    else:
+        saldos["comision"]["conocido"] = True
+    return saldos
 
 
 def corte_bloqueado(db: Session, corte: Corte) -> bool:
@@ -252,6 +283,7 @@ def resolver_revision(
         estado=EstadoMovimiento.ACEPTADO,
         original_uuid=movimiento.uuid,
         motivo=motivo.strip(),
+        profesional_id=movimiento.profesional_id,
     )
     db.add(compensatoria)
     db.flush()
@@ -323,6 +355,7 @@ def registrar_compensacion(
         original_uuid=original.uuid,
         motivo=motivo.strip(),
         evidencia=evidencia,
+        profesional_id=corte.barbero_id if concepto == ConceptoMovimiento.COMISION else None,
     )
     db.add(fila)
     db.flush()
@@ -382,6 +415,7 @@ def registrar_devolucion(
         metodo_pago=MetodoPago.EFECTIVO,
         estado=EstadoMovimiento.ACEPTADO,
         motivo=motivo.strip(),
+        profesional_id=corte.barbero_id if concepto == ConceptoMovimiento.COMISION else None,
     )
     db.add(fila)
     db.flush()

@@ -25,6 +25,8 @@ class AccionAuditoriaCorte(str, enum.Enum):
     RESOLUCION = "resolucion"
     COMPENSACION = "compensacion"
     DEVOLUCION = "devolucion"
+    # Evidencia histórica (paquete 10, RF-54 parcial).
+    EVIDENCIA = "evidencia"
 
 
 class AuditoriaCorte(Base):

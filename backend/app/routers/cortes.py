@@ -6,15 +6,20 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import requerir_admin, obtener_usuario_actual
-from app.models.corte import Corte
+from app.models.corte import Corte, MetodoPago
 from app.models.usuario import Usuario, Rol
 from app.schemas.corte import (
     CobroInicial,
     CorteAnular,
     CorteCrear,
     CorteEditar,
+    CorteEdicionResponse,
     CorteResponse,
     CortePersonal,
+    EvidenciaFinanciera,
+    IntervencionResolver,
+    IntervencionResponse,
+    JustificanteResponse,
 )
 from app.services.corte_service import crear_corte
 from app.services.edicion_corte_service import (
@@ -27,7 +32,7 @@ from app.services.edicion_corte_service import (
 from app.models.auditoria_corte import AccionAuditoriaCorte
 from app.services.movimiento_corte_service import corte_bloqueado
 from app.services.movimiento_corte_service import registrar_abono, saldos_corte
-from app.models.finanzas_corte import ConceptoMovimiento
+from app.models.finanzas_corte import ConceptoMovimiento, MovimientoCorte
 from app.services.operacion_corte_service import (
     ConflictoIdentidad,
     ReintentosAgotados,
@@ -64,6 +69,41 @@ def mis_cortes(
         .limit(limit)
         .all()
     )
+
+
+@router.get("/mi/justificantes", response_model=list[JustificanteResponse])
+def mis_justificantes(
+    db: Session = Depends(get_db),
+    actor: Usuario = Depends(obtener_usuario_actual),
+):
+    """Justificantes monetarios propios (paquete 10, RF-48 parcial).
+
+    Tras una reasignación, el profesional anterior conserva únicamente
+    sus filas comisionadas (sin datos del nuevo titular); el aislamiento
+    es por `profesional_id`, nunca filtrado en pantalla.
+    """
+    filas = (
+        db.query(MovimientoCorte)
+        .filter(
+            MovimientoCorte.profesional_id == actor.id,
+            MovimientoCorte.concepto == ConceptoMovimiento.COMISION,
+        )
+        .order_by(MovimientoCorte.id)
+        .all()
+    )
+    return [
+        JustificanteResponse(
+            corte_id=fila.corte_id,
+            uuid=fila.uuid,
+            concepto=fila.concepto,
+            tipo=fila.tipo.value if fila.tipo else None,
+            importe=fila.importe,
+            motivo=fila.motivo,
+            momento_real=fila.momento_real,
+            registrado_en=fila.registrado_en,
+        )
+        for fila in filas
+    ]
 
 
 @router.get("/{corte_id}", response_model=CortePersonal)
@@ -207,7 +247,7 @@ def registrar_corte(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.patch("/{corte_id}", response_model=CortePersonal)
+@router.patch("/{corte_id}", response_model=CorteEdicionResponse)
 def editar_corte_endpoint(
     corte_id: int,
     datos: CorteEditar,
@@ -216,8 +256,10 @@ def editar_corte_endpoint(
 ):
     """Edita servicio y/o método de un corte propio no bloqueado (RF-22/42).
 
-    El bloqueo y la anulación se verifican en T44/T45; aquí titularidad y
-    recálculo. El admin opera sobre cualquier corte (gestión).
+    LWW por unidades (paquete 10, RF-36): el instante decide por unidad;
+    la anulación terminal prevalece siempre (409). El bloqueo y la
+    anulación se verifican en T44/T45; aquí titularidad y recálculo.
+    El admin opera sobre cualquier corte (gestión).
     """
     corte = db.query(Corte).filter(Corte.id == corte_id).first()
     if not corte:
@@ -239,27 +281,183 @@ def editar_corte_endpoint(
             status_code=400,
             detail="Corregir un corte bloqueado exige motivo",
         )
+    if datos.barbero_id is not None and actor.rol != Rol.ADMIN:
+        raise HTTPException(status_code=403, detail="Solo un admin reasigna cortes")
+    if datos.barbero_id is not None and not datos.motivo:
+        raise HTTPException(
+            status_code=400, detail="Reasignar un corte exige motivo"
+        )
+    if datos.momento_real is not None and actor.rol != Rol.ADMIN:
+        raise HTTPException(status_code=400, detail="Solo un admin corrige el momento real")
+    momento = datos.momento_real
+    if momento is not None:
+        if momento.tzinfo is not None:
+            momento = momento.astimezone(timezone.utc).replace(tzinfo=None)
+        if momento > datetime.utcnow():
+            raise HTTPException(
+                status_code=400, detail="El momento real no puede ser futuro"
+            )
+        if not datos.motivo:
+            raise HTTPException(
+                status_code=400, detail="Corregir el momento real exige motivo"
+            )
     try:
         antes = snapshot_corte(corte)
-        corte = aplicar_edicion(
+        instante = datos.instante_cambio
+        if instante is not None and instante.tzinfo is not None:
+            instante = instante.astimezone(timezone.utc).replace(tzinfo=None)
+        corte, unidades = aplicar_edicion(
             db,
             corte=corte,
             servicio_id=datos.servicio_id,
             metodo=datos.metodo_pago,
+            instante=instante,
+            nuevo_barbero_id=datos.barbero_id,
+            momento_real=momento,
         )
+        despues = snapshot_corte(corte)
+        despues["unidades"] = unidades
+        if datos.operacion_uuid:
+            despues["operacion_uuid"] = datos.operacion_uuid
+        if datos.bases:
+            despues["bases_vistas"] = datos.bases
         auditar_cambio(
             db,
             corte_id=corte.id,
             actor_id=actor.id,
             accion=AccionAuditoriaCorte.EDICION,
             antes=antes,
-            despues=snapshot_corte(corte),
+            despues=despues,
             motivo=datos.motivo,
         )
     except NoEncontrado as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    db.commit()
+    db.refresh(corte)
+    respuesta = CorteEdicionResponse.model_validate(corte)
+    respuesta.unidades = unidades
+    return respuesta
+
+
+@router.post("/intervenciones/{uuid}/resolver", response_model=IntervencionResponse)
+def resolver_intervencion_endpoint(
+    uuid: str,
+    datos: IntervencionResolver,
+    db: Session = Depends(get_db),
+    actor: Usuario = Depends(obtener_usuario_actual),
+):
+    """Resuelve manualmente una intervención RF-40 (solo admin).
+
+    `aplicar` ejecuta la edición/anulación con las reglas vigentes y
+    motivo obligatorio; `descartar` la cierra sin efecto. Nada se
+    auto-aplica: ambas ramas exigen motivo y dejan journal.
+    """
+    from app.models.intervencion_corte import EstadoIntervencion, IntervencionCorte
+
+    if actor.rol != Rol.ADMIN:
+        raise HTTPException(status_code=403, detail="Solo un admin resuelve intervenciones")
+    intervencion = (
+        db.query(IntervencionCorte).filter(IntervencionCorte.uuid == uuid).first()
+    )
+    if not intervencion:
+        raise HTTPException(status_code=404, detail="Intervención no encontrada")
+    if intervencion.estado != EstadoIntervencion.PENDIENTE:
+        raise HTTPException(status_code=409, detail="La intervención ya fue resuelta")
+    if not datos.motivo or not datos.motivo.strip():
+        raise HTTPException(status_code=400, detail="La resolución exige motivo")
+    if datos.decision == "descartar":
+        intervencion.estado = EstadoIntervencion.DESCARTADA
+        intervencion.motivo_resolucion = datos.motivo.strip()
+        intervencion.resuelta_en = datetime.utcnow()
+        intervencion.resuelta_por = actor.id
+        db.commit()
+        db.refresh(intervencion)
+        return intervencion
+    corte = db.query(Corte).filter(Corte.id == intervencion.corte_id).first()
+    if not corte:
+        raise HTTPException(status_code=404, detail="Corte no encontrado")
+    if corte.anulado_en is not None:
+        raise HTTPException(status_code=409, detail="Corte anulado: no admite edición")
+    try:
+        antes = snapshot_corte(corte)
+        cambios = intervencion.cambios.get("cambios", {}) if isinstance(intervencion.cambios, dict) else {}
+        if intervencion.accion == "anular":
+            corte = aplicar_anulacion(db, corte=corte, actor=actor, motivo=datos.motivo)
+            accion = AccionAuditoriaCorte.ANULACION
+            despues = snapshot_corte(corte)
+        else:
+            metodo = None
+            if cambios.get("metodo_pago") is not None:
+                metodo = MetodoPago(cambios["metodo_pago"])
+            servicio_id = cambios.get("servicio_id")
+            corte, unidades = aplicar_edicion(
+                db,
+                corte=corte,
+                servicio_id=int(servicio_id) if servicio_id is not None else None,
+                metodo=metodo,
+                instante=datetime.utcnow(),
+            )
+            accion = AccionAuditoriaCorte.EDICION
+            despues = {**snapshot_corte(corte), "unidades": unidades,
+                       "intervencion_uuid": intervencion.uuid}
+        auditar_cambio(
+            db,
+            corte_id=corte.id,
+            actor_id=actor.id,
+            accion=accion,
+            antes=antes,
+            despues=despues,
+            motivo=datos.motivo,
+        )
+    except NoEncontrado as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    intervencion.estado = EstadoIntervencion.APLICADA
+    intervencion.motivo_resolucion = datos.motivo.strip()
+    intervencion.resuelta_en = datetime.utcnow()
+    intervencion.resuelta_por = actor.id
+    db.commit()
+    db.refresh(intervencion)
+    return intervencion
+
+
+@router.post("/{corte_id}/evidencia-financiera", response_model=CortePersonal)
+def evidencia_financiera_endpoint(
+    corte_id: int,
+    datos: EvidenciaFinanciera,
+    db: Session = Depends(get_db),
+    actor: Usuario = Depends(obtener_usuario_actual),
+):
+    """Marca o completa información financiera histórica (solo admin, RF-54).
+
+    Con evidencia, autor y trazabilidad; nunca sustituye una fecha
+    histórica por la actual ni inventa movimientos.
+    """
+    if actor.rol != Rol.ADMIN:
+        raise HTTPException(status_code=403, detail="Solo un admin registra evidencia")
+    corte = db.query(Corte).filter(Corte.id == corte_id).first()
+    if not corte:
+        raise HTTPException(status_code=404, detail="Corte no encontrado")
+    if not datos.evidencia or not datos.evidencia.strip():
+        raise HTTPException(status_code=400, detail="La evidencia es obligatoria")
+    antes = snapshot_corte(corte)
+    if datos.concepto == ConceptoMovimiento.CLIENTE:
+        corte.deuda_conocida = True if datos.conocido else False
+    else:
+        corte.comision_conocida = True if datos.conocido else False
+    db.flush()
+    auditar_cambio(
+        db,
+        corte_id=corte.id,
+        actor_id=actor.id,
+        accion=AccionAuditoriaCorte.EVIDENCIA,
+        antes=antes,
+        despues={**snapshot_corte(corte), "evidencia": datos.evidencia.strip()},
+        motivo=datos.evidencia.strip(),
+    )
     db.commit()
     db.refresh(corte)
     return corte

@@ -30,6 +30,17 @@ class Corte(Base):
     anulado_en = Column(DateTime, nullable=True)
     anulado_motivo = Column(String(255), nullable=True)
     anulado_por = Column(Integer, ForeignKey("usuarios.id"), nullable=True)
+    # Concurrencia LWW (paquete 10, RF-36): relojes por unidad de conflicto
+    # (método y momento reales independientes; finanzas como grupo). `fecha`
+    # sigue siendo el momento real, nunca clave de orden.
+    version = Column(Integer, default=1, nullable=False)
+    unidad_metodo_ts = Column(DateTime, nullable=True)
+    unidad_momento_ts = Column(DateTime, nullable=True)
+    unidad_finanzas_ts = Column(DateTime, nullable=True)
+    # Históricos (paquete 10, RF-44): nulo = conocido (compat); False solo
+    # por marca explícita, nunca inventado por lectura.
+    deuda_conocida = Column(Boolean, nullable=True)
+    comision_conocida = Column(Boolean, nullable=True)
 
     barbero = relationship(
         "Usuario", backref="cortes", foreign_keys=[barbero_id]

@@ -64,6 +64,8 @@ class SaldoConcepto(BaseModel):
     restante: Decimal
     excedente: Decimal = Decimal("0.00")
     estado: str
+    # Históricos (paquete 10, RF-44): False = sin información suficiente.
+    conocido: bool = True
 
 
 class SaldosResponse(BaseModel):

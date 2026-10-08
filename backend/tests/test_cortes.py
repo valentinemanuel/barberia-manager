@@ -2143,3 +2143,285 @@ def test_movimientos_ajeno_404_y_detector_extendido(client):
     })
     assert r.status_code == 201
     assert _sin_campos_prohibidos(r.json()) == []
+
+
+def test_lww_relojes_y_profesional_por_defecto(client):
+    """T66 (RF-36 base): filas nuevas con versión 1, relojes nulos y profesional propio."""
+    from app.models.corte import Corte as CorteT66
+    from app.models.finanzas_corte import MovimientoCorte as MovimientoT66
+
+    corte_id = _corte_para_abonos(client, "barbero_t66")
+    token = _token_para(client, "barbero_t66")
+    assert _abonar(client, token, corte_id, "cliente", 40).status_code == 201
+    assert _abonar(client, token, corte_id, "comision", 10).status_code == 201
+    db = TestingSessionLocal()
+    corte = db.query(CorteT66).filter(CorteT66.id == corte_id).first()
+    assert corte.version == 1
+    assert corte.unidad_metodo_ts is None
+    assert corte.unidad_momento_ts is None
+    assert corte.unidad_finanzas_ts is None
+    assert corte.deuda_conocida is None
+    assert corte.comision_conocida is None
+    filas = db.query(MovimientoT66).filter(MovimientoT66.corte_id == corte_id).all()
+    por_concepto = {f.concepto.value: f for f in filas}
+    assert por_concepto["cliente"].profesional_id is None
+    assert por_concepto["comision"].profesional_id == corte.barbero_id
+    db.close()
+
+
+def _segundo_servicio(db, nombre, precio):
+    from decimal import Decimal as DecimalT67
+
+    db.add(Servicio(nombre=nombre, descripcion="segundo", precio=DecimalT67(precio), duracion_minutos=30, activo=True))
+    db.commit()
+    return db.query(Servicio).filter(Servicio.nombre == nombre).first().id
+
+
+def test_lww_metodo_gana_tardia_y_anterior_omitida(client):
+    """T67 (RF-36): instante anterior al ganador → omitida con causa."""
+    corte_id = _corte_para_abonos(client, "barbero_t67")
+    token = _token_para(client, "barbero_t67")
+    auth = {"Authorization": f"Bearer {token}"}
+    r1 = client.patch(f"/api/cortes/{corte_id}", json={
+        "metodo_pago": "tarjeta", "instante_cambio": "2026-10-08T10:00:00",
+    }, headers=auth)
+    assert r1.status_code == 200
+    assert r1.json()["metodo_pago"] == "tarjeta"
+    assert r1.json()["unidades"]["metodo"] == "aplicada"
+    r2 = client.patch(f"/api/cortes/{corte_id}", json={
+        "metodo_pago": "transferencia", "instante_cambio": "2026-10-08T09:00:00",
+    }, headers=auth)
+    assert r2.status_code == 200
+    assert r2.json()["metodo_pago"] == "tarjeta"
+    assert r2.json()["unidades"]["metodo"] == "omitida"
+
+
+def test_lww_unidades_independientes_y_grupo_integro(client):
+    """T67: método y finanzas no se pisan; el grupo financiero no se mezcla."""
+    from decimal import Decimal as DecimalT67b
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t67b", DecimalT67b("50"), DecimalT67b("100.00"))
+    servicio_b = _segundo_servicio(db, "Servicio T67B", "200.00")
+    servicio_a = db.query(Servicio).filter(Servicio.nombre == "Servicio T7").first().id
+    db.close()
+    token = _token_para(client, "barbero_t67b")
+    auth = {"Authorization": f"Bearer {token}"}
+    corte_id = client.post("/api/cortes/", json={"servicio_id": servicio_a, "metodo_pago": "efectivo"}, headers=auth).json()["id"]
+    r = client.patch(f"/api/cortes/{corte_id}", json={
+        "servicio_id": servicio_b, "instante_cambio": "2026-10-08T10:00:00",
+    }, headers=auth)
+    assert r.json()["precio"] == "200.00"
+    assert r.json()["unidades"]["finanzas"] == "aplicada"
+    r = client.patch(f"/api/cortes/{corte_id}", json={
+        "metodo_pago": "tarjeta", "instante_cambio": "2026-10-08T09:00:00",
+    }, headers=auth)
+    assert r.json()["metodo_pago"] == "tarjeta"
+    assert r.json()["precio"] == "200.00"
+    r = client.patch(f"/api/cortes/{corte_id}", json={
+        "servicio_id": servicio_a, "instante_cambio": "2026-10-08T09:30:00",
+    }, headers=auth)
+    assert r.json()["precio"] == "200.00"
+    assert r.json()["unidades"]["finanzas"] == "omitida"
+
+
+def test_anulacion_prevalece_sobre_edicion_tardia(client):
+    """T67 (RF-36): anulado + edición con instante futuro → 409, sin reactivar."""
+    corte_id = _corte_para_abonos(client, "barbero_t67c")
+    token = _token_para(client, "barbero_t67c")
+    auth = {"Authorization": f"Bearer {token}"}
+    assert client.post(f"/api/cortes/{corte_id}/anular", json={}, headers=auth).status_code == 200
+    r = client.patch(f"/api/cortes/{corte_id}", json={
+        "metodo_pago": "tarjeta", "instante_cambio": "2026-10-08T12:00:00",
+    }, headers=auth)
+    assert r.status_code == 409
+
+
+def db_id(login):
+    db = TestingSessionLocal()
+    uid = db.query(Usuario).filter(Usuario.usuario == login).first().id
+    db.close()
+    return uid
+
+
+def test_reasignar_conserva_precio_y_aplica_porcentaje_nuevo(client):
+    """T69 (RF-47): precio actual del servicio + % actual del nuevo profesional."""
+    from decimal import Decimal as DecimalT69b
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t69a", DecimalT69b("50"), DecimalT69b("200.00"))
+    barbero_b = _crear_usuario(db, "barbero_t69b", Rol.BARBERO)
+    barbero_b.porcentaje_ganancia = DecimalT69b("30")
+    db.commit()
+    _crear_usuario(db, "admin_t69", Rol.ADMIN)
+    servicio_id = db.query(Servicio).first().id
+    db.close()
+    token_a = _token_para(client, "barbero_t69a")
+    corte_id = client.post("/api/cortes/", json={"servicio_id": servicio_id, "metodo_pago": "efectivo"},
+                           headers={"Authorization": f"Bearer {token_a}"}).json()["id"]
+    nuevo_id = db_id("barbero_t69b")
+    r = client.patch(f"/api/cortes/{corte_id}", json={
+        "barbero_id": nuevo_id,
+        "motivo": "reasignación por ausentismo",
+    }, headers={"Authorization": f"Bearer {_token_para(client, 'admin_t69')}"})
+    assert r.status_code == 200
+    assert r.json()["precio"] == "200.00"
+    assert r.json()["porcentaje_barbero"] == "30.00"
+    assert r.json()["parte_barbero"] == "60.00"
+    assert r.json()["barbero_id"] == nuevo_id
+
+
+def test_reasignar_exige_motivo_y_admin(client):
+    """T69: sin motivo → 400; barbero → 403; momento futuro admin → 400; momento barbero → 400."""
+    corte_id = _corte_para_abonos(client, "barbero_t69c")
+    token = _token_para(client, "barbero_t69c")
+    auth = {"Authorization": f"Bearer {token}"}
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t69c", Rol.ADMIN)
+    otro_id = db.query(Usuario).filter(Usuario.usuario == "barbero_t69c").first().id
+    db.close()
+    auth_admin = {"Authorization": f"Bearer {_token_para(client, 'admin_t69c')}"}
+    assert client.patch(f"/api/cortes/{corte_id}", json={"barbero_id": otro_id}, headers=auth_admin).status_code == 400
+    assert client.patch(f"/api/cortes/{corte_id}", json={"barbero_id": otro_id, "motivo": "m"}, headers=auth).status_code == 403
+    assert client.patch(f"/api/cortes/{corte_id}", json={"momento_real": "2030-01-01T10:00:00", "motivo": "m"}, headers=auth_admin).status_code == 400
+    assert client.patch(f"/api/cortes/{corte_id}", json={"momento_real": "2020-01-01T10:00:00"}, headers=auth).status_code == 400
+
+
+def test_pagos_previos_no_se_trasladan_al_nuevo(client):
+    """T69 (RF-47): la comisión del nuevo parte de su propio neto."""
+    from decimal import Decimal as DecimalT69d
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t69d", DecimalT69d("50"), DecimalT69d("100.00"))
+    b = _crear_usuario(db, "barbero_t69e", Rol.BARBERO)
+    b.porcentaje_ganancia = DecimalT69d("50")
+    db.commit()
+    _crear_usuario(db, "admin_t69d", Rol.ADMIN)
+    servicio_id = db.query(Servicio).first().id
+    nuevo_id = db.query(Usuario).filter(Usuario.usuario == "barbero_t69e").first().id
+    db.close()
+    token_d = _token_para(client, "barbero_t69d")
+    corte_id = client.post("/api/cortes/", json={"servicio_id": servicio_id, "metodo_pago": "efectivo"},
+                           headers={"Authorization": f"Bearer {token_d}"}).json()["id"]
+    assert _abonar(client, token_d, corte_id, "comision", 20).status_code == 201
+    r = client.patch(f"/api/cortes/{corte_id}", json={
+        "barbero_id": nuevo_id, "motivo": "reasignación",
+    }, headers={"Authorization": f"Bearer {_token_para(client, 'admin_t69d')}"})
+    assert r.status_code == 200
+    saldos = _saldos(client, _token_para(client, "barbero_t69e"), corte_id).json()
+    assert saldos["comision"]["abonado"] == "0.00"
+    assert saldos["comision"]["restante"] == "50.00"
+
+
+def test_reasignado_pierde_acceso_total(client):
+    """T70 (RF-48): el anterior ve 404 e historial sin el corte; el nuevo sí."""
+    from decimal import Decimal as DecimalT70
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t70a", DecimalT70("50"), DecimalT70("100.00"))
+    _crear_usuario(db, "barbero_t70b", Rol.BARBERO)
+    _crear_usuario(db, "admin_t70", Rol.ADMIN)
+    servicio_id = db.query(Servicio).first().id
+    nuevo_id = db.query(Usuario).filter(Usuario.usuario == "barbero_t70b").first().id
+    db.close()
+    token_a = _token_para(client, "barbero_t70a")
+    corte_id = client.post("/api/cortes/", json={"servicio_id": servicio_id, "metodo_pago": "efectivo"},
+                           headers={"Authorization": f"Bearer {token_a}"}).json()["id"]
+    r = client.patch(f"/api/cortes/{corte_id}", json={
+        "barbero_id": nuevo_id, "motivo": "reasignación",
+    }, headers={"Authorization": f"Bearer {_token_para(client, 'admin_t70')}"})
+    assert r.status_code == 200
+    assert client.get(f"/api/cortes/{corte_id}", headers={"Authorization": f"Bearer {token_a}"}).status_code == 404
+    historial = client.get("/api/cortes/mi/historial", headers={"Authorization": f"Bearer {token_a}"}).json()
+    assert all(c["id"] != corte_id for c in historial)
+    assert client.get(f"/api/cortes/{corte_id}", headers={"Authorization": f"Bearer {_token_para(client, 'barbero_t70b')}"}).status_code == 200
+
+
+def test_justificantes_solo_propios_y_limpios(client):
+    """T70 (RF-48): el anterior conserva sus filas comisionadas, sin datos del nuevo."""
+    from decimal import Decimal as DecimalT70b
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t70c", DecimalT70b("50"), DecimalT70b("100.00"))
+    _crear_usuario(db, "barbero_t70d", Rol.BARBERO)
+    _crear_usuario(db, "admin_t70b", Rol.ADMIN)
+    servicio_id = db.query(Servicio).first().id
+    nuevo_id = db.query(Usuario).filter(Usuario.usuario == "barbero_t70d").first().id
+    db.close()
+    token_c = _token_para(client, "barbero_t70c")
+    corte_id = client.post("/api/cortes/", json={"servicio_id": servicio_id, "metodo_pago": "efectivo"},
+                           headers={"Authorization": f"Bearer {token_c}"}).json()["id"]
+    assert _abonar(client, token_c, corte_id, "comision", 20).status_code == 201
+    assert _abonar(client, token_c, corte_id, "cliente", 30).status_code == 201
+    r = client.patch(f"/api/cortes/{corte_id}", json={
+        "barbero_id": nuevo_id, "motivo": "reasignación",
+    }, headers={"Authorization": f"Bearer {_token_para(client, 'admin_t70b')}"})
+    assert r.status_code == 200
+    r = client.get("/api/cortes/mi/justificantes", headers={"Authorization": f"Bearer {token_c}"})
+    assert r.status_code == 200
+    filas = r.json()
+    assert len(filas) == 1
+    assert filas[0]["importe"] == "20.00"
+    assert filas[0]["concepto"] == "comision"
+    assert _sin_campos_prohibidos(filas) == []
+    r = client.get("/api/cortes/mi/justificantes", headers={"Authorization": f"Bearer {_token_para(client, 'barbero_t70d')}"})
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+def _evidencia(client, admin_login, corte_id, body):
+    return client.post(
+        f"/api/cortes/{corte_id}/evidencia-financiera",
+        json=body,
+        headers={"Authorization": f"Bearer {_token_para(client, admin_login)}"},
+    )
+
+
+def test_historico_desconocido_no_inventa_deuda(client):
+    """T71 (RF-44): marcado desconocido → sin restante ni excedente; comision intacta."""
+    corte_id = _corte_para_abonos(client, "barbero_t71")
+    token = _token_para(client, "barbero_t71")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t71", Rol.ADMIN)
+    db.close()
+    assert _abonar(client, token, corte_id, "cliente", 30).status_code == 201
+    assert _evidencia(client, "barbero_t71", corte_id, {
+        "concepto": "cliente", "conocido": False, "evidencia": "x",
+    }).status_code == 403
+    assert _evidencia(client, "admin_t71", corte_id, {
+        "concepto": "cliente", "conocido": False, "evidencia": "sin comprobantes",
+    }).status_code == 200
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["estado"] == "desconocido"
+    assert saldos["cliente"]["restante"] == "0.00"
+    assert saldos["cliente"]["excedente"] == "0.00"
+    assert saldos["cliente"]["conocido"] is False
+    assert saldos["comision"]["estado"] == "pendiente"
+    assert saldos["comision"]["conocido"] is True
+
+
+def test_admin_completa_con_evidencia_sin_tocar_fecha(client):
+    """T71 (RF-54): completar restaura saldos + journal, sin sustituir fecha."""
+    from app.models.auditoria_corte import AuditoriaCorte as AuditoriaT71
+
+    corte_id = _corte_para_abonos(client, "barbero_t71b")
+    token = _token_para(client, "barbero_t71b")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t71b", Rol.ADMIN)
+    db.close()
+    assert _abonar(client, token, corte_id, "cliente", 30).status_code == 201
+    fecha_antes = client.get(f"/api/cortes/{corte_id}", headers={"Authorization": f"Bearer {token}"}).json()["fecha"]
+    assert _evidencia(client, "admin_t71b", corte_id, {
+        "concepto": "cliente", "conocido": False, "evidencia": "legajo incompleto",
+    }).status_code == 200
+    assert _evidencia(client, "admin_t71b", corte_id, {
+        "concepto": "cliente", "conocido": True, "evidencia": "comprobantes 1-3",
+    }).status_code == 200
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["estado"] == "parcial"
+    assert saldos["cliente"]["restante"] == "70.00"
+    fecha_despues = client.get(f"/api/cortes/{corte_id}", headers={"Authorization": f"Bearer {token}"}).json()["fecha"]
+    assert fecha_despues == fecha_antes
+    db = TestingSessionLocal()
+    assert db.query(AuditoriaT71).filter(AuditoriaT71.corte_id == corte_id).count() >= 2
+    db.close()

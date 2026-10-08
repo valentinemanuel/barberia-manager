@@ -826,3 +826,105 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 | T63 | Rojo real: doble 404 (sin listado); ajuste honesto: mi test de devolución olvidó el abono previo (capacidad 0 → 400 correcto) | Verde: `98 passed` (2 archivos) | DB estable; `movimientos_corte.py` (GET listado propio/gestión con motivos, 404 ajeno idéntico, revisiones con causa) + `test_cortes.py` (motivos propios visibles, detector T17 extendido a listado/saldos/correctivos limpio, admin intacto). Sin exponer autor ni datos ajenos. |
 | T64 | Rojo real: `ROJO T64: falta src/services/saldosVista.ts` (exit 1) | Verde: `VERDE T64` + `npm run build` OK (exit 0, SW generado) | Solo frontend: `saldosVista.ts` (puro: excedente aparte, revisión con causa, motivos propios) + `scripts/t64-test.mjs` + `MisSaldos.tsx` (nueva: historial propio + saldos/movimientos por corte, sin totales del negocio) + ruta `/saldos` + nav. Sin `any`; display con `formatearMoneda` existente (sin aritmética float nueva). |
 | T65 | Sin rojo: solo verificación final, sin cambios productivos nuevos | Verde: `125 + 2 + 8 + 10 + 2` por archivo (toda la suite backend) + `167 passed` aislada + 5 node frontend + `npm run build` OK (exit 0) | DB estable en baseline (`bd4c32af…`); ningún `upgrade` contra base real ejecutado (007 solo TEMP legacy+filas); `git status` solo este documento. Paquete 9 completo en cobertura parcial, sin declarar spec implementada; cierre pendiente de revisión independiente (`sdd-reviewer`), que no autoriza paquete 10. |
+
+---
+
+## Paquete 10 — Concurrencia LWW + reasignación + históricos
+
+Estado: **tareas redactadas, pendientes de aprobación para implementar**. Paquetes 1–9 cerrados, no rehacer.
+
+Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2026-10-08). No se autoriza implementación por esta redacción.
+
+### Decisiones del paquete (respuestas del usuario)
+
+- Tamaño: **todo junto** (~9 tareas) en vez de dividir en 10a/10b.
+- Sync: **con sync** (acciones `editar/anular_v2` con instante y bases; RF-40 incluido).
+- Justificantes: **con justificantes** (endpoint propio del anterior + revocación total del resto).
+- Históricos: **completo** (estado `desconocido` en saldos sin inventar deudas; filas nuevas siempre conocidas).
+- Intervención: **revisión manual** (tabla de intervenciones + resolución admin aplicar/descartar con motivo; sin auto-aplicación).
+
+### Alcance y límites
+
+- Nueve tareas de 20–30 minutos: estimación 4–5 horas.
+- Cobertura **parcial**: RF-36 (LWW por unidades + anulación terminal prevalece), RF-40 (edición bloqueada offline → intervención, sin aplicar), RF-42 (grupo financiero coherente; corrección fecha admin), RF-44 (desconocido sin inventar), RF-47/RF-48 (reasignación con % nuevo, pagos anteriores sin trasladar, revocación + justificantes), RF-54 (completar histórico solo admin con evidencia). No afirma pull RF-55, jornadas/imputación RF-45/49/50, liquidaciones, ni cumplimiento integral.
+- Archivos que podrá tocar este paquete cuando se autorice implementar:
+  - M `backend/app/models/corte.py` (solo relojes por unidad + `version` + `deuda_conocida`/`comision_conocida`; `fecha` intacta como momento real).
+  - M `backend/app/models/finanzas_corte.py` (solo `profesional_id` en movimientos).
+  - C `backend/alembic/versions/008_lww_reasignacion.py` (solo ADD COLUMN nullable + backfill `profesional_id`/`conocido=True`, con guard, patrón 004/006/007).
+  - M `backend/app/services/edicion_corte_service.py` (solo LWW por unidades + reasignación + fecha admin + journal).
+  - M `backend/app/services/movimiento_corte_service.py` (solo saldos por asignación + desconocido; `corte_bloqueado` intacto).
+  - M `backend/app/routers/cortes.py` (solo PATCH con instante/bases/unidades + `barbero_id`/`momento_real` admin + `GET /mi/justificantes`).
+  - M `backend/app/routers/sync.py` (solo `editar/anular_v2` + intervenciones; sin pull).
+  - C `backend/app/models/intervencion_corte.py` (solo tabla pendiente de intervención).
+  - M `backend/app/schemas/corte.py` (solo campos LWW/reasignación + DTO justificantes; `CortePersonal` intacto).
+  - M `backend/tests/test_cortes.py` + M `backend/tests/test_sync_roles.py` (solo tests nuevos).
+  - M/C frontend outbox edición (solo `crearOperacionEdicion/Anulacion`, sender, mini-form en MisSaldos, estados) + `npm run build`.
+- Prohibido: pull historial/cobertura, jornadas/cierres/imputación, reasignación fuera de admin+motivo, reapertura de cierres, `create_all` en import, `pytest tests/` global, cualquier `upgrade` contra base real.
+- Precaución DB real vigente: hash de `backend/barberia.db` antes/después, pytest solo por archivo, upgrades solo TEMP.
+
+### Tareas en orden de dependencia
+
+- [x] **T66. Relojes LWW + migración 008.** RF-36 (base).
+  - Dependencias: ninguna dentro del paquete.
+  - Tests primero: `history` muestra `008`; `upgrade` en TEMP legacy+filas agrega columnas (`version`, 3 relojes por unidad, `profesional_id`, `deuda/comision_conocida`) con backfill (profesional = titular actual en comisionadas, conocido = sí) preservando datos; repetir no-op.
+  - Implementar: columnas nullable + `version` default 1; sin tocar `fecha` ni snapshots.
+  - Hecho cuando: escenarios TEMP verificados y prohibido aplicar contra base real.
+
+- [x] **T67. LWW en PATCH online.** RF-36/RF-42 (parciales).
+  - Dependencias: T66.
+  - Tests primero: dos ediciones concurrentes de método (instantes distintos) → gana la tardía; método + servicio concurrentes → ambas se conservan (unidades distintas); dos del grupo financiero → ganador íntegro (sin mezclar precio de uno con % de otro); edición con instante anterior al ganador → omitida con causa; anulado + edición tardía → 409 (terminal prevalece).
+  - Implementar: `instante_cambio` + `bases` por unidad en PATCH; grupo financiero atómico; respuesta con unidades aplicadas/omitidas; journal con `operacion_uuid`.
+  - Hecho cuando: tests en verde y ningún silencio ante conflicto (omitida con causa).
+
+- [x] **T68. Sync editar/anular_v2 + RF-40.** RF-30/RF-32/RF-36/RF-40 (parciales).
+  - Dependencias: T67.
+  - Tests primero: edición offline con bases viejas → LWW igual que online; edición que llega tras bloqueo/pago → 202 `pendiente_intervencion` conservada sin aplicar (no 409, no auto-aplicación); anulación no autorizada tras bloqueo → no terminaliza; replay misma UUID no duplica intervención.
+  - Implementar: acciones sync + tabla `intervenciones_corte` + `POST .../intervenciones/{uuid}/resolver` admin (aplicar con motivo o descartar con motivo, journaled).
+  - Hecho cuando: tests en verde y ninguna edición bloqueada se aplica sola.
+
+- [x] **T69. Reasignación admin.** RF-47 (parcial).
+  - Dependencias: T66–T67.
+  - Tests primero: admin cambia barbero con motivo → 200 con precio conservado + % actual del nuevo + reparto nuevo; pagos anteriores del profesional previo siguen en journal sin trasladarse (saldos del nuevo parten de su propio neto); fecha futura → 400; barbero → 403.
+  - Implementar: `barbero_id` + `momento_real` en PATCH (solo admin + motivo); grupo financiero incluye barbero; journal con antes/después de titular.
+  - Hecho cuando: tests en verde y el nuevo neto no hereda pagos ajenos.
+
+- [x] **T70. Revocación + justificantes.** RF-48 (parcial), RNF-5.
+  - Dependencias: T69.
+  - Tests primero: anterior → `GET /{id}` 404 + historial sin el corte; `GET /mi/justificantes` → solo sus filas comisionadas con importes propios (detector T17 limpio); nuevo titular no ve nada del anterior y viceversa.
+  - Implementar: filtro por titular vigente + endpoint justificantes (filas `profesional_id` propio); mismo aislamiento en outbox local (solo filas propias).
+  - Hecho cuando: verdes sin filtraciones en ningún sentido.
+
+- [x] **T71. Históricos desconocidos + evidencia admin.** RF-44/RF-54 (parciales).
+  - Dependencias: T66 (columnas).
+  - Tests primero: corte marcado desconocido → saldos con estado `desconocido`, restante/excedente 0, obligación registrada visible pero no como deuda; admin completa con evidencia → conocido + journal (sin sustituir fecha por `now()`); barbero no puede completar (403).
+  - Implementar: `deuda/comision_conocida` en saldos/DTOs + `POST .../evidencia-financiera` solo admin.
+  - Hecho cuando: tests en verde y ningún histórico inventa deuda.
+
+- [x] **T72. Frontend: edición offline + estados.** RF-28–30/RF-57 (parciales), RNF-4.
+  - Dependencias: T67–T68.
+  - Tests primero (node, patrón T50–T64): `crearOperacionEdicion/Anulacion` (UUID + instante único + bases); `npm run build` en verde.
+  - Implementar: outbox + sender con cadena + mini-form de corrección en MisSaldos (servicio/método sobre no bloqueados) + estados (omitida/intervención/desconocido/justificantes visibles).
+  - Hecho cuando: tests node + build en verde, sin `any` ni aritmética float nueva.
+
+- [x] **T73. Regresión total y cierre del paquete.** RF-36/RF-40/RF-42/RF-44/RF-47/RF-48/RF-54 (parciales), RNF-3/RNF-5/RNF-6.
+  - Dependencias: T66–T72.
+  - Ejecutar por archivo las suites tocadas + suite aislada del paquete 1 + tests node + `npm run build`, todo en verde, con precaución DB real + gate de migración registrados (ningún `upgrade` contra base real ejecutado).
+  - Registrar comandos/resultados en la evidencia de abajo y actualizar el estado sin declarar implementada la spec completa. El cierre requiere revisión independiente (`sdd-reviewer`) y no autoriza paquete 11.
+  - Hecho cuando: todo lo anterior en verde, solo los archivos autorizados cambiaron y queda solicitada la revisión de cierre.
+
+### Evidencia futura (paquete 10)
+
+| Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
+|---|---|---|---|
+| T66 | Rojo real: `AttributeError` (version/relojes/profesional inexistentes) + `history` en 007 | Verde: `122 passed` (3 archivos) + `008` en TEMP (legacy + filas: 6 columnas + backfill version 1 y profesional solo comisionada; repetir no-op) | DB estable; `corte.py` (version + 3 relojes + conocido nullable) + `finanzas_corte.py` (profesional_id) + `008` (ADD nullable + backfill solo nulos) + abonos/compensaciones/devoluciones nuevas con titular (cliente NULL). `fecha` intacta. |
+| T67 | Rojo real: doble failed (`unidades` ausente; grupo mezclable); anulación prevalece ya en verde (T45) | Verde: `125 passed` (3 archivos) | DB estable; `schemas/corte.py` (`instante/bases/operacion_uuid` + `CorteEdicionResponse` aditivo) + `edicion_corte_service.py` (LWW por unidad, grupo atómico, version+1 por cambio aplicado) + `cortes.py` (journal con unidades/op/bases). Resolución solo por instante (bases informativas en journal); empate aplica al último. |
+| T68 | Rojo real: cuádruple failed (acciones desconocidas → 409) + `NameError: MetodoPago` en el resolvedor | Verde: `106 passed` (2 archivos) + `009` en TEMP (vacía/legacy/repetir) | Divulgación: `barberia.db` ganó la tabla vacía `intervenciones_corte` por `create_all` histórico (0 filas, legacy intacto; nuevo baseline `79facc3f…`). `sync.py` (editar/anular_v2 con LWW por instante; bloqueado barbero → 202 intervención idempotente; admin exige motivo; anulado → 409) + `intervencion_corte.py` + `009` (nueva, con guard) + resolvedor manual aplicar/descartar con journal + tests. Desvío honesto: migración `009` no estaba en la lista del paquete (regularizada aquí, como P2-6 del paquete 9). |
+| T69 | Rojo real: triple failed (422 sin `barbero_id/momento_real` en schema) | Verde: `132 passed` (3 archivos) | DB estable; `schemas/corte.py` (`barbero_id/momento_real`) + `edicion_corte_service.py` (barbero entra al grupo financiero: precio conservado + % nuevo; momento con reloj propio) + `cortes.py` (403 barbero reasigna, 400 barbero fecha / futuro / sin motivo) + `saldos` comisión solo del titular vigente (cliente intacto; sin regresiones: filas API siempre con profesional). Inactivo con % permitido (sin check de activo, RF-56). |
+| T70 | Rojo real: 404 sin listado (revocación ya en verde por titularidad T69) | Verde: `134 passed` (3 archivos) | DB estable; `cortes.py` (GET `/mi/justificantes` por `profesional_id`, antes de `/{corte_id}`) + `schemas/corte.py` (`JustificanteResponse` sin titular ni ajenos) + `test_cortes.py` (404 + historial limpio + justificantes propios/detector/B vacío). Outbox local ya aísla por actor (T53, sin código nuevo). |
+| T71 | Rojo real: doble 404 (sin endpoint evidencia) | Verde: `136 passed` (3 archivos) | DB estable; `movimientos_corte.py` (`conocido` en DTO) + `movimiento_corte_service.py` (desconocido: sin restante/excedente, importes visibles, fecha intacta) + `cortes.py` (POST evidencia solo admin 403 + journal EVIDENCIA) + `schemas/auditoria` (acción EVIDENCIA, sin migración en SQLite) + tests. Nulo = conocido (filas nuevas siempre conocidas). |
+| T72 | Rojo real: `ROJO T72: faltan crearOperacionEdicion/Anulacion` (exit 1) | Verde: `VERDE T72` + T50/T54 + `npm run build` OK (exit 0) | Solo frontend: `operacionesCortes.ts` (edición con cambios validados + anulación terminal) + `scripts/t72-test.mjs` + `db.ts` (`edicion/anulacion` + `corteIdServidor`, sin bump) + `useSync.ts` (sender con id conocido o cadena + 202→revisión) + `MisSaldos.tsx` (mini-form método + anular con confirm + badge desconocido + justificantes). Sin `any`; sin aritmética float nueva. |
+| T73 | Sin rojo: solo verificación final, sin cambios productivos nuevos | Verde: `140 + 2 + 8 + 10 + 2` por archivo (toda la suite backend) + `167 passed` aislada + 6 node frontend + `npm run build` OK (exit 0) | DB estable en baseline (`79facc3f…` tras tabla vacía 009 por `create_all`); ningún `upgrade` contra base real ejecutado (008/009 solo TEMP); `git status` solo este documento (+ journal efímero de test retirado). Paquete 10 completo en cobertura parcial, sin declarar spec implementada; cierre pendiente de revisión independiente (`sdd-reviewer`), que no autoriza paquete 11. |
+
+### Cierre del paquete 10 (revisión independiente)
+
+`sdd-reviewer`: veredicto **APROBADO PAQUETE 10** sin tocar archivos. Re-ejecutó todo (140 + 22 + 167 + 6 node + build), migraciones 008/009 en copia TEMP con guards, hash DB idéntico, constitución y códigos exactos. Grupo atómico sin mezcla; unknown sobre anulado en orden correcto; saldos por titular sin traslados. P2 no bloqueantes: (1) `bases`/`version` informativas (trazabilidad futura); (2) empate sin tiebreak por UUID (aceptable; considerar en pull); (3) aplicar-intervención gana LWW con now (corrección autorizada, trazada); (4) endurecer backfill 008 ante `create_all` previo en rollout; (5) resúmenes sin `desconocido` (pendiente paquete acumulados/jornadas); (6) deudas P2 heredadas del paquete 9. El cierre no autoriza paquete 11 ni declara la spec implementada.
