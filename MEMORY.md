@@ -143,6 +143,9 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 - P1-2 reportado como **deuda bloqueante del paquete de auditoría**: edición admin en bloqueado exige motivo pero lo descarta y pisa valores (RF-26 parcial). Requiere decisión del usuario antes del merge (aceptar deuda o journal mínimo).
 - Divulgación vigente: `barberia.db` estable (`4c7f1b19…`). No autoriza paquete 8 ni declara la spec implementada.
 
+## Spec 002 — paquete 8 redactado (2026-10-07)
+- `tasks.md` con T50–T57 en rama `feat/spec-002-paquete-8-outbox-sync`: outbox Dexie v2 persist-first, push cortes/abonos con UUID obligatoria v2 + estados, exceso/reloj a revisión, aislamiento simplificado por cuenta, cobro inicial offline con resultados individuales, catálogo que no se pierde + PWA sin api-cache, revalidación al sincronizar y regresión. Decisiones del usuario: cortes+abonos, UUID obligatoria v2, simplificado, pull diferido, LWW diferido. Prohibidos: pull RF-55, LWW/RF-40, jornadas, bóveda, upgrades reales. Implementación pendiente de aprobación.
+
 ## Recuperación documental (2026-10-05)
 - Recuperado el contenido útil de `b211ee5` en una rama nueva desde `dev`, sin cherry-pick ni reescritura de la rama histórica `feat/mcp-config-y-offline`.
 - Conservados el estado y los pendientes actuales; no se recupera la afirmación antigua de que todos los tests están completos.
