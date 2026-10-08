@@ -625,3 +625,101 @@ Aprobación recibida: alcance aprobado por el usuario (RF-22–27, RF-42, RF-46 
 ### Cierre del paquete 7 (revisión independiente)
 
 `sdd-reviewer`: veredicto inicial **REQUIERE CORRECCIONES**. P1-1 corregido por la revisión: resúmenes personales `/mi/resumen/*` contaban anulados como devengado (RF-27); agregados 3 filtros `anulado_en IS NULL` + test (verificado por el coordinador). P1-2 reportado sin tocar (excede fix pequeño): la edición admin en bloqueado exige motivo pero lo descarta y pisa valores sin conservar anteriores — **deuda bloqueante registrada para el paquete de auditoría** (ver decisión del usuario en MEMORY). P2 aplicados por el coordinador: `downgrade()` 004 suelta la FK nombrada (verificado en TEMP) y redacción T46 corregida. Reejecución del reviewer: 119 + 167 verdes, hash DB idéntico. Tras correcciones: **APROBADO PAQUETE 7**. El cierre no autoriza paquete 8 ni declara la spec implementada.
+
+---
+
+## Paquete 8 — Outbox + sync offline (cortes + abonos)
+
+Estado: **tareas redactadas, pendientes de aprobación para implementar**. Paquetes 1–7 cerrados, no rehacer.
+
+Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2026-10-07). No se autoriza implementación por esta redacción.
+
+### Decisiones del paquete (respuestas del usuario)
+
+- Alcance push: **cortes + abonos ordinarios**. Edición/anulación offline van a paquetes 9–10.
+- UUID: **obligatoria v2** para todo lo nuevo; sin UUID solo camino legacy intacto (RNF-3), sin dedup retroactiva.
+- Aislamiento: **simplificado** (stores por cuenta + generación de sesión + wipe, sin bóveda cifrada).
+- Pull cobertura RF-55 (90 días + saldos abiertos): **diferido** al paquete de historiales/jornadas.
+- LWW RF-36 y RF-40: **diferidos** al paquete 10; sync devuelve aceptada/rechazada/revisión simple.
+
+### Alcance y límites
+
+- Ocho tareas de 20–30 minutos: estimación 3–4 horas.
+- Cobertura **parcial**: RF-28 (operar offline con último rol/datos), RF-29 (persistencia ante recarga + pendiente visible), RF-30 (sincronizar con aceptadas/rechazadas/revisión), RF-32 (sin duplicados, UUID v2), RF-33 (aislamiento por cuenta), RF-34 (revalidación rol/activo al sincronizar), RF-35 (catálogo insuficiente/fallo conserva última copia), RF-38 (exceso offline → revisión, sin reducir silenciosamente), RF-51 (momento automático; reloj >5min → revisión), RF-57 (resultado por operación, corte + dependientes), RNF-2/RNF-3/RNF-5/RNF-6. No afirma pull RF-55, LWW RF-36, RF-40, jornadas/imputación RF-45/49/50, compensaciones RF-43, ni cumplimiento integral.
+- Archivos que podrá tocar este paquete cuando se autorice implementar:
+  - M `backend/app/routers/sync.py` (solo envelope v2 + estados + abonos; sin pull, sin LWW).
+  - M `backend/app/services/operacion_corte_service.py` (solo estados `revision`/`dependiente_sin_aplicar` mínimos + causa; sin transiciones LWW).
+  - M `backend/app/models/operacion_corte.py` + C `backend/alembic/versions/006_sync_estados.py` (solo columnas aditivas estado/causa/mapping; con guard).
+  - M `backend/app/routers/movimientos_corte.py` (solo aceptar `operacion_uuid` + `momento_real` + origen offline → revisión por exceso/reloj; sin cambiar saldos aceptados).
+  - M `backend/tests/test_cortes.py` + M `backend/tests/test_sync_roles.py` (solo tests nuevos).
+  - M `frontend/src/services/db.ts` (solo stores v2 aditivos: outbox/mapping; v1 intacto, sin borrar antes de verificar).
+  - C `frontend/src/services/operacionesCortes.ts` (solo outbox persist-first + codec centavos por dígitos).
+  - M `frontend/src/services/api.ts` (solo cliente typed 002 sin `Number()` global; auth por solicitud).
+  - M `frontend/src/hooks/useSync.ts` (solo envío por cuenta con UUID/modo/instante + estados por operación; sin `clear()` destructivo).
+  - M `frontend/src/pages/RegistroCortes.tsx` (solo persist-first + instante único + filtro activo válido + estimada exacta).
+  - M `frontend/vite.config.ts` (solo retirar `api-cache`; precache shell/fuentes).
+- Prohibido: pull historial/cobertura, LWW, edición/anulación offline, jornadas/cierres/imputación, compensaciones/devoluciones, bóveda cifrada, `create_all` en import, `pytest tests/` global, cualquier `upgrade` contra base real.
+- Precaución DB real vigente: hash de `backend/barberia.db` antes/después, pytest solo por archivo, upgrades solo TEMP.
+
+### Tareas en orden de dependencia
+
+- [ ] **T50. Outbox Dexie v2 + persist-first de cortes.** RF-28/RF-29 (parciales), RNF-5.
+  - Dependencias: ninguna dentro del paquete.
+  - Tests primero (frontend): guardar offline genera UUID v4 + `modo_captura` + `instante_cambio` + `momento_real` y persiste en outbox antes de intentar red; recarga conserva el pendiente con estado visible (no aceptación definitiva).
+  - Implementar: `operacionesCortes.ts` + stores v2 en `db.ts` (outbox/mapping, índices string/number, cuenta propietaria = actor, no `barbero_id`); `RegistroCortes.tsx` captura `ahora` una vez y escribe primero en outbox.
+  - Hecho cuando: registro sin conexión queda durable con UUID y pendiente visible; sin `Number()` ni `*100` float en el camino nuevo.
+
+- [ ] **T51. Push sync de cortes con UUID obligatoria v2 + estados.** RF-30/RF-32/RF-57 (parciales), RNF-3.
+  - Dependencias: T50.
+  - Tests primero: envelope v2 con `operacion_uuid` obligatorio rechaza sin UUID (400/422); reintento misma UUID no duplica (200 mismo ID); respuesta trae `estado` + `mapping UUID→ID` + `snapshot definitivo`; corte rechazado conserva dependientes sin aplicar (RF-57).
+  - Implementar: `sync.py` exige UUID en camino v2 (legacy sin UUID intacto) + pasa `modo/hash` al ejecutor; estados `aceptada/rechazada/revision/dependiente_sin_aplicar` mínimos con causa.
+  - Hecho cuando: push v2 en verde, legacy sin UUID no cambia de comportamiento, sin LWW.
+
+- [ ] **T52. Push de abonos offline + exceso/reloj a revisión.** RF-38/RF-51 (parciales), RF-57.
+  - Dependencias: T51.
+  - Tests primero: abono offline que supera saldo definitivo → 200 con `estado=revision`, conserva importe real, no reduce saldo aceptado; `momento_automático >5min` vs servidor → revisión con original conservado; abono online en exceso → rechazo directo (regresión RF-41).
+  - Implementar: `movimientos_corte.py` acepta `operacion_uuid` + `origen offline` + `momento_real`; exceso/reloj offline → fila en revisión (sin aplicar saldo); online mantiene rechazo.
+  - Hecho cuando: tests en verde y el dinero real offline nunca se recorta silenciosamente.
+
+- [ ] **T53. Aislamiento por cuenta + auth por solicitud.** RF-33 (parcial), RNF-5.
+  - Dependencias: T50–T51.
+  - Tests primero: pendientes de A no se muestran ni envían como B tras cambio de cuenta; respuesta tardía de A no toca historial/saldos de B; 401 tardío no desloguea a B.
+  - Implementar: slot sesión durable `titular/generación/último rol`, namespace por cuenta, `logout/cambio` invalida generación + aborta red + wipe stores sensibles; `api.ts` captura token/generación por solicitud y valida cuenta antes de aplicar resultado.
+  - Hecho cuando: cambio de cuenta en verde sin filtración ni atribución cruzada; sin bóveda cifrada en este paquete.
+
+- [ ] **T54. Cobro inicial offline + resultados individuales.** RF-37/RF-57 (parciales).
+  - Dependencias: T51–T52.
+  - Tests primero: corte offline con cobro `pendiente/parcial/completo` → al sincronizar se informa corte + cada movimiento por separado; `completo` usa precio mostrado (snapshot), no recalculado; corte rechazado deja dependientes conservados sin aplicar.
+  - Implementar: `depende_de` = UUID del corte original (no ID reasignable); outbox encadena dependientes; sync devuelve resultado por operación.
+  - Hecho cuando: pendientes/parciales/completos offline en verde sin anunciar éxito completo si solo se aceptó parte.
+
+- [ ] **T55. Catálogo que no se pierde + PWA sin api-cache.** RF-35 (parcial), RNF-4.
+  - Dependencias: T50 (frontend).
+  - Tests primero: fallo de update de catálogo conserva última copia válida; sin catálogo suficiente se informa limitación sin confirmar registro inexistente; filtro activo válido (sin índice booleano).
+  - Implementar: `useSync.ts` reemplaza catálogo en transacción solo tras respuesta validada (sin `clear()+bulkPut` ante fallo); `RegistroCortes.tsx` corrige fallback `activo`; `vite.config.ts` retira `api-cache` (precache solo shell/fuentes; al activar purga `api-cache` sin borrar IndexedDB).
+  - Hecho cuando: `npm run build` en verde y ningún dato sensible en CacheStorage/BackgroundSync.
+
+- [ ] **T56. Revalidación al sincronizar (rol/activo/servicio).** RF-31/RF-34/RF-56 (parciales).
+  - Dependencias: T51.
+  - Tests primero: actor desactivado o rol cambiado al sincronizar → rechazada con motivo (spec 000); servicio desactivado después de registrar offline → aceptada con valores actuales; servicio/actor inexistente sin valores recuperables → revisión sin inventar valores.
+  - Implementar: `sync.py` revalida actor vigente por operación (ya parcial; extender a abonos); cortes usan valores actuales al aceptar; inexistentes → revisión.
+  - Hecho cuando: tests en verde sin eludir permisos ni inventar identidad/importes.
+
+- [ ] **T57. Regresión total y cierre del paquete.** RF-28–35/RF-38/RF-51/RF-57 (parciales), RNF-2/RNF-3/RNF-5/RNF-6.
+  - Dependencias: T50–T56.
+  - Ejecutar por archivo las suites tocadas + suite aislada del paquete 1 + `npm run build`, todo en verde, con precaución DB real + gate de migración registrados (ningún `upgrade` contra base real ejecutado).
+  - Registrar comandos/resultados en la evidencia de abajo y actualizar el estado sin declarar implementada la spec completa. El cierre requiere revisión independiente (`sdd-reviewer`) y no autoriza paquete 9.
+  - Hecho cuando: todo lo anterior en verde, solo los archivos autorizados cambiaron y queda solicitada la revisión de cierre.
+
+### Evidencia futura (paquete 8)
+
+| Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
+|---|---|---|---|
+| T50 |  |  |  |
+| T51 |  |  |  |
+| T52 |  |  |  |
+| T53 |  |  |  |
+| T54 |  |  |  |
+| T55 |  |  |  |
+| T56 |  |  |  |
+| T57 |  |  |  |
