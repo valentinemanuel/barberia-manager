@@ -2311,3 +2311,59 @@ def test_pagos_previos_no_se_trasladan_al_nuevo(client):
     saldos = _saldos(client, _token_para(client, "barbero_t69e"), corte_id).json()
     assert saldos["comision"]["abonado"] == "0.00"
     assert saldos["comision"]["restante"] == "50.00"
+
+
+def test_reasignado_pierde_acceso_total(client):
+    """T70 (RF-48): el anterior ve 404 e historial sin el corte; el nuevo sí."""
+    from decimal import Decimal as DecimalT70
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t70a", DecimalT70("50"), DecimalT70("100.00"))
+    _crear_usuario(db, "barbero_t70b", Rol.BARBERO)
+    _crear_usuario(db, "admin_t70", Rol.ADMIN)
+    servicio_id = db.query(Servicio).first().id
+    nuevo_id = db.query(Usuario).filter(Usuario.usuario == "barbero_t70b").first().id
+    db.close()
+    token_a = _token_para(client, "barbero_t70a")
+    corte_id = client.post("/api/cortes/", json={"servicio_id": servicio_id, "metodo_pago": "efectivo"},
+                           headers={"Authorization": f"Bearer {token_a}"}).json()["id"]
+    r = client.patch(f"/api/cortes/{corte_id}", json={
+        "barbero_id": nuevo_id, "motivo": "reasignación",
+    }, headers={"Authorization": f"Bearer {_token_para(client, 'admin_t70')}"})
+    assert r.status_code == 200
+    assert client.get(f"/api/cortes/{corte_id}", headers={"Authorization": f"Bearer {token_a}"}).status_code == 404
+    historial = client.get("/api/cortes/mi/historial", headers={"Authorization": f"Bearer {token_a}"}).json()
+    assert all(c["id"] != corte_id for c in historial)
+    assert client.get(f"/api/cortes/{corte_id}", headers={"Authorization": f"Bearer {_token_para(client, 'barbero_t70b')}"}).status_code == 200
+
+
+def test_justificantes_solo_propios_y_limpios(client):
+    """T70 (RF-48): el anterior conserva sus filas comisionadas, sin datos del nuevo."""
+    from decimal import Decimal as DecimalT70b
+
+    db = TestingSessionLocal()
+    _crear_barbero_y_servicio(db, "barbero_t70c", DecimalT70b("50"), DecimalT70b("100.00"))
+    _crear_usuario(db, "barbero_t70d", Rol.BARBERO)
+    _crear_usuario(db, "admin_t70b", Rol.ADMIN)
+    servicio_id = db.query(Servicio).first().id
+    nuevo_id = db.query(Usuario).filter(Usuario.usuario == "barbero_t70d").first().id
+    db.close()
+    token_c = _token_para(client, "barbero_t70c")
+    corte_id = client.post("/api/cortes/", json={"servicio_id": servicio_id, "metodo_pago": "efectivo"},
+                           headers={"Authorization": f"Bearer {token_c}"}).json()["id"]
+    assert _abonar(client, token_c, corte_id, "comision", 20).status_code == 201
+    assert _abonar(client, token_c, corte_id, "cliente", 30).status_code == 201
+    r = client.patch(f"/api/cortes/{corte_id}", json={
+        "barbero_id": nuevo_id, "motivo": "reasignación",
+    }, headers={"Authorization": f"Bearer {_token_para(client, 'admin_t70b')}"})
+    assert r.status_code == 200
+    r = client.get("/api/cortes/mi/justificantes", headers={"Authorization": f"Bearer {token_c}"})
+    assert r.status_code == 200
+    filas = r.json()
+    assert len(filas) == 1
+    assert filas[0]["importe"] == "20.00"
+    assert filas[0]["concepto"] == "comision"
+    assert _sin_campos_prohibidos(filas) == []
+    r = client.get("/api/cortes/mi/justificantes", headers={"Authorization": f"Bearer {_token_para(client, 'barbero_t70d')}"})
+    assert r.status_code == 200
+    assert r.json() == []

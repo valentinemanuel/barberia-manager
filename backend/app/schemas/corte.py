@@ -75,6 +75,25 @@ class IntervencionResponse(BaseModel):
         from_attributes = True
 
 
+class JustificanteResponse(BaseModel):
+    """Justificante propio post-reasignación (paquete 10, RF-48).
+
+    Sin titular del corte ni datos de otros profesionales.
+    """
+
+    corte_id: int
+    uuid: str
+    concepto: str
+    tipo: Optional[str] = None
+    importe: Decimal
+    motivo: Optional[str] = None
+    momento_real: Optional[datetime] = None
+    registrado_en: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class CorteResponse(BaseModel):
     id: int
     barbero_id: int

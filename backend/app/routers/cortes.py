@@ -18,6 +18,7 @@ from app.schemas.corte import (
     CortePersonal,
     IntervencionResolver,
     IntervencionResponse,
+    JustificanteResponse,
 )
 from app.services.corte_service import crear_corte
 from app.services.edicion_corte_service import (
@@ -30,7 +31,7 @@ from app.services.edicion_corte_service import (
 from app.models.auditoria_corte import AccionAuditoriaCorte
 from app.services.movimiento_corte_service import corte_bloqueado
 from app.services.movimiento_corte_service import registrar_abono, saldos_corte
-from app.models.finanzas_corte import ConceptoMovimiento
+from app.models.finanzas_corte import ConceptoMovimiento, MovimientoCorte
 from app.services.operacion_corte_service import (
     ConflictoIdentidad,
     ReintentosAgotados,
@@ -67,6 +68,41 @@ def mis_cortes(
         .limit(limit)
         .all()
     )
+
+
+@router.get("/mi/justificantes", response_model=list[JustificanteResponse])
+def mis_justificantes(
+    db: Session = Depends(get_db),
+    actor: Usuario = Depends(obtener_usuario_actual),
+):
+    """Justificantes monetarios propios (paquete 10, RF-48 parcial).
+
+    Tras una reasignación, el profesional anterior conserva únicamente
+    sus filas comisionadas (sin datos del nuevo titular); el aislamiento
+    es por `profesional_id`, nunca filtrado en pantalla.
+    """
+    filas = (
+        db.query(MovimientoCorte)
+        .filter(
+            MovimientoCorte.profesional_id == actor.id,
+            MovimientoCorte.concepto == ConceptoMovimiento.COMISION,
+        )
+        .order_by(MovimientoCorte.id)
+        .all()
+    )
+    return [
+        JustificanteResponse(
+            corte_id=fila.corte_id,
+            uuid=fila.uuid,
+            concepto=fila.concepto,
+            tipo=fila.tipo.value if fila.tipo else None,
+            importe=fila.importe,
+            motivo=fila.motivo,
+            momento_real=fila.momento_real,
+            registrado_en=fila.registrado_en,
+        )
+        for fila in filas
+    ]
 
 
 @router.get("/{corte_id}", response_model=CortePersonal)
