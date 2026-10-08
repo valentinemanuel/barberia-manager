@@ -156,6 +156,9 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 - P2 no bloqueantes (ver cierre en tasks): erroneo re-ejecutable sin UUID, compensación positiva sin evidencia, replay real→409, estado pagado en anulado-sin-dinero, concepto vs original sin validar, deuda float-display heredada.
 - No autoriza paquete 10 ni declara la spec implementada.
 
+## Spec 002 — paquete 10 redactado (2026-10-08)
+- `tasks.md` con T66–T73 en rama `feat/spec-002-paquete-10-concurrencia-reasignacion`: relojes LWW + migración 008, LWW online, sync editar/anular + RF-40 con intervención manual, reasignación, revocación + justificantes, históricos unknown + evidencia, frontend edición offline + estados, regresión. Decisiones: todo junto, con sync, con justificantes, unknown completo, revisión manual. Prohibidos: pull RF-55, jornadas, reaperturas. Implementación pendiente de aprobación.
+
 ## Recuperación documental (2026-10-05)
 - Recuperado el contenido útil de `b211ee5` en una rama nueva desde `dev`, sin cherry-pick ni reescritura de la rama histórica `feat/mcp-config-y-offline`.
 - Conservados el estado y los pendientes actuales; no se recupera la afirmación antigua de que todos los tests están completos.
