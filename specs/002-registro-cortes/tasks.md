@@ -663,7 +663,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 
 ### Tareas en orden de dependencia
 
-- [ ] **T50. Outbox Dexie v2 + persist-first de cortes.** RF-28/RF-29 (parciales), RNF-5.
+- [x] **T50. Outbox Dexie v2 + persist-first de cortes.** RF-28/RF-29 (parciales), RNF-5.
   - Dependencias: ninguna dentro del paquete.
   - Tests primero (frontend): guardar offline genera UUID v4 + `modo_captura` + `instante_cambio` + `momento_real` y persiste en outbox antes de intentar red; recarga conserva el pendiente con estado visible (no aceptación definitiva).
   - Implementar: `operacionesCortes.ts` + stores v2 en `db.ts` (outbox/mapping, índices string/number, cuenta propietaria = actor, no `barbero_id`); `RegistroCortes.tsx` captura `ahora` una vez y escribe primero en outbox.
@@ -715,7 +715,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 
 | Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
 |---|---|---|---|
-| T50 |  |  |  |
+| T50 | Rojo real: `ROJO T50: falta src/services/operacionesCortes.ts` (exit 1) + asserts `sin Number()` ajustados a falsos positivos (comentarios y `Number(bigint)`) | Verde: `VERDE T50` (node, codec + HALF_UP + UUID + instante único) + `npm run build` OK (tsc + vite, sw generado) | Solo frontend: `operacionesCortes.ts` (nuevo, puro sin Number/parseFloat) + `scripts/t50-test.mjs` + `db.ts` (v2 aditiva outbox/mapeo, v1 intacta) + `RegistroCortes.tsx` (persist-first con instante único, fallback `activo` con `.filter()`, estimada exacta, banner pendientes por cuenta). Sin backend ni DB tocados. |
 | T51 |  |  |  |
 | T52 |  |  |  |
 | T53 |  |  |  |
