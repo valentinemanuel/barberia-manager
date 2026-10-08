@@ -2096,3 +2096,50 @@ def test_anular_cancela_obligaciones_y_neto_a_excedente(client):
         (r.despues or {}).get("obligaciones_canceladas") is True for r in fila
     )
     db.close()
+
+
+def _movimientos_de(client, token, corte_id):
+    return client.get(
+        f"/api/cortes/{corte_id}/movimientos",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+
+def test_barbero_ve_motivos_en_lo_propio(client):
+    """T63: motivos de correctivos propios visibles; sin datos del negocio."""
+    corte_id = _corte_para_abonos(client, "barbero_t63")
+    token = _token_para(client, "barbero_t63")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t63", Rol.ADMIN)
+    db.close()
+    original_uuid = _abonar(client, token, corte_id, "cliente", 100).json()["uuid"]
+    assert _compensar(client, "admin_t63", corte_id, {
+        "concepto": "cliente", "importe": "-20.00",
+        "motivo": "cobro duplicado", "original_uuid": original_uuid,
+    }).status_code == 201
+    r = _movimientos_de(client, token, corte_id)
+    assert r.status_code == 200
+    motivos = [m["motivo"] for m in r.json()]
+    assert "cobro duplicado" in motivos
+    assert _sin_campos_prohibidos(r.json()) == []
+
+
+def test_movimientos_ajeno_404_y_detector_extendido(client):
+    """T63 (RF-14/RNF-5): ajeno → 404 idéntico; detector limpio en saldos y correctivos."""
+    from app.models.usuario import Rol as RolT63
+
+    corte_id = _corte_para_abonos(client, "barbero_t63b")
+    token = _token_para(client, "barbero_t63b")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barbero_t63c", RolT63.BARBERO)
+    _crear_usuario(db, "admin_t63b", RolT63.ADMIN)
+    db.close()
+    assert _movimientos_de(client, _token_para(client, "barbero_t63c"), corte_id).status_code == 404
+    assert _movimientos_de(client, _token_para(client, "admin_t63b"), corte_id).status_code == 200
+    assert _sin_campos_prohibidos(_saldos(client, token, corte_id).json()) == []
+    assert _abonar(client, token, corte_id, "cliente", 100).status_code == 201
+    r = _devolver(client, "admin_t63b", corte_id, {
+        "concepto": "cliente", "importe": "10.00", "motivo": "devolución menor",
+    })
+    assert r.status_code == 201
+    assert _sin_campos_prohibidos(r.json()) == []

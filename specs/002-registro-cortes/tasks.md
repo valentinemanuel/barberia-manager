@@ -791,7 +791,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - Implementar: bifurcar 409 (ordinario vs correctivo admin) + efecto al anular con journal (`anular_corte` extendido).
   - Hecho cuando: tests en verde y ningún abono ordinario entra al anulado.
 
-- [ ] **T63. Motivos visibles en lo propio + privacidad.** RF-14/RF-15 (regresión), RNF-5.
+- [x] **T63. Motivos visibles en lo propio + privacidad.** RF-14/RF-15 (regresión), RNF-5.
   - Dependencias: T59–T62.
   - Tests primero: barbero ve motivos de correctivos sobre sus cortes (trazabilidad); ajeno → 404 idéntico; detector T17 extendido (sin `parte_barberia`/costos/datos ajenos en respuestas nuevas); admin conserva todo.
   - Implementar: `motivo` en DTOs propios (personal + movimientos + saldos); nada de otros profesionales.
@@ -818,6 +818,6 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 | T60 | Rojo real: doble 404 (sin ruta compensaciones) | Verde: `91 passed` (2 archivos) | DB estable; `movimiento_corte_service.py` (`registrar_compensacion` + `OriginalAusente`: motivo obligatorio, importe con signo no nulo, referencia exigida, idempotente por UUID) + `movimientos_corte.py` (POST solo admin 403, journal COMPENSACION, helper `_respuesta_movimiento` que elimina triplicación) + `test_cortes.py`. Original intacto; correctivo ya vale sobre anulados (base T62). |
 | T61 | Rojo real: triple 404 (sin ruta devoluciones) | Verde: `94 passed` (2 archivos, incluye carrera con threads) | DB estable; `movimiento_corte_service.py` (`capacidad_devolucion` = neto no negativo + `registrar_devolucion` con motivo/capacidad/idempotencia + `_candado_devolucion` de proceso) + `movimientos_corte.py` (POST solo admin, UoW con candado + journal con capacidad real, `rollback` en error) + `test_cortes.py` (límite, carrera 201+400 determinista, replay, permisos). Multi-worker/PG exigirá locks de fila (deuda explícita). |
 | T62 | Rojo real: `restante` seguía 70 tras anular (sin cancelación); correctivos al anulado en verde inicial (endpoints sin check, honesto) | Verde: `119 passed` (3 archivos) | DB estable; `movimiento_corte_service.py` (anulado ⇒ obligaciones 0, neto→excedente; historial intacto) + `cortes.py` (journal ANULACION con `obligaciones_canceladas` + netos/excedentes) + `test_cortes.py`. Sin nueva migración: la escritura del efecto es la fila de journal (terminal, sin reapertura). Ordinario al anulado sigue 409 (POST y sync). |
-| T63 |  |  |  |
+| T63 | Rojo real: doble 404 (sin listado); ajuste honesto: mi test de devolución olvidó el abono previo (capacidad 0 → 400 correcto) | Verde: `98 passed` (2 archivos) | DB estable; `movimientos_corte.py` (GET listado propio/gestión con motivos, 404 ajeno idéntico, revisiones con causa) + `test_cortes.py` (motivos propios visibles, detector T17 extendido a listado/saldos/correctivos limpio, admin intacto). Sin exponer autor ni datos ajenos. |
 | T64 |  |  |  |
 | T65 |  |  |  |

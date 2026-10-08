@@ -153,6 +153,28 @@ def obtener_saldos(
     return saldos_corte(db, corte)
 
 
+@router.get("/{corte_id}/movimientos", response_model=list[MovimientoResponse])
+def listar_movimientos(
+    corte_id: int,
+    db: Session = Depends(get_db),
+    actor: Usuario = Depends(obtener_usuario_actual),
+):
+    """Movimientos del corte con motivos propios visibles (T63, RF-43 parcial).
+
+    Propio o gestión; ajeno/inexistente → 404 idéntico (RF-14). Incluye
+    revisiones con causa e importe y correctivos con motivo, sin datos
+    de otros profesionales (RNF-5).
+    """
+    corte = _corte_propio_o_gestion(db, corte_id, actor)
+    filas = (
+        db.query(MovimientoCorte)
+        .filter(MovimientoCorte.corte_id == corte.id)
+        .order_by(MovimientoCorte.id)
+        .all()
+    )
+    return [_respuesta_movimiento(fila) for fila in filas]
+
+
 class ResolucionCrear(BaseModel):
     """Resolución admin de una revisión (paquete 9, RF-53 parcial)."""
 
