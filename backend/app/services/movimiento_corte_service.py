@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.models.corte import MetodoPago
 from app.models.finanzas_corte import (
     ConceptoMovimiento,
+    EstadoMovimiento,
     MovimientoCorte,
     TipoMovimiento,
 )
@@ -33,9 +34,10 @@ def registrar_abono(
 ) -> MovimientoCorte:
     """Crea un abono ordinario con importe canónico (sin normalizar).
 
-    En origen online el abono no puede superar el saldo restante (RF-41);
-    el exceso offline queda para el paquete de revisión (RF-38), hoy se
-    acepta con esta limitación documentada.
+    En origen online el abono no puede superar el saldo restante (RF-41).
+    En origen offline (paquete 8, T52, RF-38/RF-51) el exceso sobre el
+    saldo definitivo y el reloj adelantado más de cinco minutos conservan
+    el movimiento con su importe real en revisión, sin mover saldos.
     """
     try:
         importe_ok = validar_importe_abono(importe)
@@ -47,11 +49,23 @@ def registrar_abono(
         )
         if existente is not None:
             return existente
+    causa_revision: str | None = None
     if origen == "online":
         clave = "cliente" if concepto == ConceptoMovimiento.CLIENTE else "comision"
         restante = saldos_corte(db, corte)[clave]["restante"]
         if importe_ok > restante:
             raise ValueError("El abono supera el saldo restante del concepto")
+    else:
+        clave = "cliente" if concepto == ConceptoMovimiento.CLIENTE else "comision"
+        restante = saldos_corte(db, corte)[clave]["restante"]
+        if importe_ok > restante:
+            # RF-38: se conserva íntegro para decisión admin, sin recortar.
+            causa_revision = "exceso"
+        if momento_real is not None:
+            desvio = (momento_real - datetime.utcnow()).total_seconds()
+            if desvio > 300:
+                # RF-51: solo reloj adelantado >5min; el atraso de sync no invalida.
+                causa_revision = "reloj" if causa_revision is None else causa_revision + "+reloj"
     movimiento = MovimientoCorte(
         uuid=uuid or str(uuid4()),
         corte_id=corte.id,
@@ -61,6 +75,8 @@ def registrar_abono(
         autor_id=autor.id,
         metodo_pago=metodo,
         momento_real=momento_real,
+        estado=EstadoMovimiento.REVISION if causa_revision else EstadoMovimiento.ACEPTADO,
+        motivo_revision=causa_revision,
     )
     db.add(movimiento)
     db.flush()
@@ -90,10 +106,22 @@ def calcular_saldo(obligacion: Decimal, abonado: Decimal) -> dict:
 
 
 def saldos_corte(db: Session, corte: Corte) -> dict:
-    """Saldos de ambos conceptos desde movimientos aceptados."""
+    """Saldos de ambos conceptos desde movimientos aceptados.
+
+    Revisión y nulos legacy: los nulos legacy cuentan como aceptados
+    (compat); las revisiones no mueven saldos (RF-38/RF-53).
+    """
+    from sqlalchemy import or_
+
     movimientos = (
         db.query(MovimientoCorte)
-        .filter(MovimientoCorte.corte_id == corte.id)
+        .filter(
+            MovimientoCorte.corte_id == corte.id,
+            or_(
+                MovimientoCorte.estado == EstadoMovimiento.ACEPTADO,
+                MovimientoCorte.estado.is_(None),
+            ),
+        )
         .all()
     )
     neto = {ConceptoMovimiento.CLIENTE: Decimal("0"), ConceptoMovimiento.COMISION: Decimal("0")}

@@ -43,11 +43,50 @@ export interface ConsumibleLocal {
   activo: boolean
 }
 
+export type EstadoOperacionLocal =
+  | 'pendiente'
+  | 'enviando'
+  | 'aceptada'
+  | 'rechazada'
+  | 'revision'
+  | 'dependiente'
+
+export interface OperacionCorteLocal {
+  operacionUuid: string
+  corteUuid: string
+  actorId: number
+  servicioId: number
+  metodoPago: string
+  precioCentavos: number
+  porcentajeCentesimas: number
+  modoCaptura: 'online' | 'offline'
+  instanteCambio: string
+  momentoReal: string
+  estado: EstadoOperacionLocal
+  intento: number
+  ultimoError?: string
+  idServidor?: number
+  actualizadoEn: string
+  // Abono encadenado (T54, RF-37/RF-57): solo en filas tipo abono.
+  // Campos opcionales: sin cambio de índices ni versión Dexie.
+  tipo?: 'corte' | 'abono'
+  concepto?: 'cliente' | 'comision'
+  importeCentavos?: number
+  dependeDe?: string
+}
+
+export interface MapeoOperacionLocal {
+  operacionUuid: string
+  corteIdServidor: number
+}
+
 class BarberiaDB extends Dexie {
   cortes!: Table<CorteLocal>
   servicios!: Table<ServicioLocal>
   productos!: Table<ProductoLocal>
   consumibles!: Table<ConsumibleLocal>
+  outboxOperaciones!: Table<OperacionCorteLocal, string>
+  mapeoOperaciones!: Table<MapeoOperacionLocal, string>
 
   constructor() {
     super('barberia_db')
@@ -56,6 +95,16 @@ class BarberiaDB extends Dexie {
       servicios: 'id, nombre, activo',
       productos: 'id, nombre, activo',
       consumibles: 'id, nombre, activo',
+    })
+    // v2 aditiva (paquete 8, T50): conserva v1 y agrega outbox + mapeo
+    // por cuenta. Índices string/number, nunca boolean como clave.
+    this.version(2).stores({
+      cortes: '++id, barbero_id, servicio_id, fecha, sincronizado',
+      servicios: 'id, nombre, activo',
+      productos: 'id, nombre, activo',
+      consumibles: 'id, nombre, activo',
+      outboxOperaciones: 'operacionUuid, actorId, estado, instanteCambio',
+      mapeoOperaciones: 'operacionUuid',
     })
   }
 }
