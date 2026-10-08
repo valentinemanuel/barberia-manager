@@ -2143,3 +2143,27 @@ def test_movimientos_ajeno_404_y_detector_extendido(client):
     })
     assert r.status_code == 201
     assert _sin_campos_prohibidos(r.json()) == []
+
+
+def test_lww_relojes_y_profesional_por_defecto(client):
+    """T66 (RF-36 base): filas nuevas con versión 1, relojes nulos y profesional propio."""
+    from app.models.corte import Corte as CorteT66
+    from app.models.finanzas_corte import MovimientoCorte as MovimientoT66
+
+    corte_id = _corte_para_abonos(client, "barbero_t66")
+    token = _token_para(client, "barbero_t66")
+    assert _abonar(client, token, corte_id, "cliente", 40).status_code == 201
+    assert _abonar(client, token, corte_id, "comision", 10).status_code == 201
+    db = TestingSessionLocal()
+    corte = db.query(CorteT66).filter(CorteT66.id == corte_id).first()
+    assert corte.version == 1
+    assert corte.unidad_metodo_ts is None
+    assert corte.unidad_momento_ts is None
+    assert corte.unidad_finanzas_ts is None
+    assert corte.deuda_conocida is None
+    assert corte.comision_conocida is None
+    filas = db.query(MovimientoT66).filter(MovimientoT66.corte_id == corte_id).all()
+    por_concepto = {f.concepto.value: f for f in filas}
+    assert por_concepto["cliente"].profesional_id is None
+    assert por_concepto["comision"].profesional_id == corte.barbero_id
+    db.close()

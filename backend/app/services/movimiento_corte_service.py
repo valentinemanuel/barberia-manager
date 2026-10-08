@@ -85,6 +85,9 @@ def registrar_abono(
         momento_real=momento_real,
         estado=EstadoMovimiento.REVISION if causa_revision else EstadoMovimiento.ACEPTADO,
         motivo_revision=causa_revision,
+        # Titular del dinero (paquete 10, T66): la comisión pertenece al
+        # titular del corte, no al autor del registro; la deuda es del corte.
+        profesional_id=corte.barbero_id if concepto == ConceptoMovimiento.COMISION else None,
     )
     db.add(movimiento)
     db.flush()
@@ -252,6 +255,7 @@ def resolver_revision(
         estado=EstadoMovimiento.ACEPTADO,
         original_uuid=movimiento.uuid,
         motivo=motivo.strip(),
+        profesional_id=movimiento.profesional_id,
     )
     db.add(compensatoria)
     db.flush()
@@ -323,6 +327,7 @@ def registrar_compensacion(
         original_uuid=original.uuid,
         motivo=motivo.strip(),
         evidencia=evidencia,
+        profesional_id=corte.barbero_id if concepto == ConceptoMovimiento.COMISION else None,
     )
     db.add(fila)
     db.flush()
@@ -382,6 +387,7 @@ def registrar_devolucion(
         metodo_pago=MetodoPago.EFECTIVO,
         estado=EstadoMovimiento.ACEPTADO,
         motivo=motivo.strip(),
+        profesional_id=corte.barbero_id if concepto == ConceptoMovimiento.COMISION else None,
     )
     db.add(fila)
     db.flush()

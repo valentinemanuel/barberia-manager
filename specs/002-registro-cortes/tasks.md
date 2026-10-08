@@ -864,7 +864,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 
 ### Tareas en orden de dependencia
 
-- [ ] **T66. Relojes LWW + migración 008.** RF-36 (base).
+- [x] **T66. Relojes LWW + migración 008.** RF-36 (base).
   - Dependencias: ninguna dentro del paquete.
   - Tests primero: `history` muestra `008`; `upgrade` en TEMP legacy+filas agrega columnas (`version`, 3 relojes por unidad, `profesional_id`, `deuda/comision_conocida`) con backfill (profesional = titular actual en comisionadas, conocido = sí) preservando datos; repetir no-op.
   - Implementar: columnas nullable + `version` default 1; sin tocar `fecha` ni snapshots.
@@ -916,7 +916,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 
 | Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
 |---|---|---|---|
-| T66 |  |  |  |
+| T66 | Rojo real: `AttributeError` (version/relojes/profesional inexistentes) + `history` en 007 | Verde: `122 passed` (3 archivos) + `008` en TEMP (legacy + filas: 6 columnas + backfill version 1 y profesional solo comisionada; repetir no-op) | DB estable; `corte.py` (version + 3 relojes + conocido nullable) + `finanzas_corte.py` (profesional_id) + `008` (ADD nullable + backfill solo nulos) + abonos/compensaciones/devoluciones nuevas con titular (cliente NULL). `fecha` intacta. |
 | T67 |  |  |  |
 | T68 |  |  |  |
 | T69 |  |  |  |

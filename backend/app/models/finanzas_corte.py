@@ -76,3 +76,7 @@ class MovimientoCorte(Base):
     original_uuid = Column(String(36), nullable=True)
     motivo = Column(String(255), nullable=True)
     evidencia = Column(String(255), nullable=True)
+    # Titular del dinero (paquete 10, T66): profesional al que pertenece una
+    # comisión. Nulo en cliente (la deuda es del corte) y en legacy, que se
+    # rellena en la migración 008 con el titular vigente entonces.
+    profesional_id = Column(Integer, nullable=True)
