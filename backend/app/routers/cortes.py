@@ -16,6 +16,7 @@ from app.schemas.corte import (
     CorteEdicionResponse,
     CorteResponse,
     CortePersonal,
+    EvidenciaFinanciera,
     IntervencionResolver,
     IntervencionResponse,
     JustificanteResponse,
@@ -421,6 +422,45 @@ def resolver_intervencion_endpoint(
     db.commit()
     db.refresh(intervencion)
     return intervencion
+
+
+@router.post("/{corte_id}/evidencia-financiera", response_model=CortePersonal)
+def evidencia_financiera_endpoint(
+    corte_id: int,
+    datos: EvidenciaFinanciera,
+    db: Session = Depends(get_db),
+    actor: Usuario = Depends(obtener_usuario_actual),
+):
+    """Marca o completa información financiera histórica (solo admin, RF-54).
+
+    Con evidencia, autor y trazabilidad; nunca sustituye una fecha
+    histórica por la actual ni inventa movimientos.
+    """
+    if actor.rol != Rol.ADMIN:
+        raise HTTPException(status_code=403, detail="Solo un admin registra evidencia")
+    corte = db.query(Corte).filter(Corte.id == corte_id).first()
+    if not corte:
+        raise HTTPException(status_code=404, detail="Corte no encontrado")
+    if not datos.evidencia or not datos.evidencia.strip():
+        raise HTTPException(status_code=400, detail="La evidencia es obligatoria")
+    antes = snapshot_corte(corte)
+    if datos.concepto == ConceptoMovimiento.CLIENTE:
+        corte.deuda_conocida = True if datos.conocido else False
+    else:
+        corte.comision_conocida = True if datos.conocido else False
+    db.flush()
+    auditar_cambio(
+        db,
+        corte_id=corte.id,
+        actor_id=actor.id,
+        accion=AccionAuditoriaCorte.EVIDENCIA,
+        antes=antes,
+        despues={**snapshot_corte(corte), "evidencia": datos.evidencia.strip()},
+        motivo=datos.evidencia.strip(),
+    )
+    db.commit()
+    db.refresh(corte)
+    return corte
 
 
 @router.post("/{corte_id}/anular", response_model=CortePersonal)

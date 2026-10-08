@@ -6,6 +6,7 @@ from uuid import UUID
 import enum
 
 from app.models.corte import MetodoPago
+from app.models.finanzas_corte import ConceptoMovimiento
 
 
 class CorteBase(BaseModel):
@@ -92,6 +93,14 @@ class JustificanteResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class EvidenciaFinanciera(BaseModel):
+    """Completar o marcar información histórica (paquete 10, RF-54)."""
+
+    concepto: ConceptoMovimiento
+    conocido: bool
+    evidencia: str
 
 
 class CorteResponse(BaseModel):

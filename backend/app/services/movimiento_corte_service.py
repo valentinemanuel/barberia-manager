@@ -162,12 +162,34 @@ def saldos_corte(db: Session, corte: Corte) -> dict:
     else:
         obligacion_cliente = corte.precio
         obligacion_comision = corte.parte_barbero
-    return {
+    saldos = {
         "cliente": calcular_saldo(obligacion_cliente, neto[ConceptoMovimiento.CLIENTE]),
         "comision": calcular_saldo(
             obligacion_comision, neto[ConceptoMovimiento.COMISION]
         ),
     }
+    # Históricos sin información (paquete 10, RF-44, T71): el concepto se
+    # muestra como desconocido sin inventar deuda ni excedente; conserva
+    # los importes registrados y nunca sustituye fechas.
+    if corte.deuda_conocida is False:
+        saldos["cliente"].update({
+            "restante": Decimal("0.00"),
+            "excedente": Decimal("0.00"),
+            "estado": "desconocido",
+            "conocido": False,
+        })
+    else:
+        saldos["cliente"]["conocido"] = True
+    if corte.comision_conocida is False:
+        saldos["comision"].update({
+            "restante": Decimal("0.00"),
+            "excedente": Decimal("0.00"),
+            "estado": "desconocido",
+            "conocido": False,
+        })
+    else:
+        saldos["comision"]["conocido"] = True
+    return saldos
 
 
 def corte_bloqueado(db: Session, corte: Corte) -> bool:

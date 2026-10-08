@@ -2367,3 +2367,61 @@ def test_justificantes_solo_propios_y_limpios(client):
     r = client.get("/api/cortes/mi/justificantes", headers={"Authorization": f"Bearer {_token_para(client, 'barbero_t70d')}"})
     assert r.status_code == 200
     assert r.json() == []
+
+
+def _evidencia(client, admin_login, corte_id, body):
+    return client.post(
+        f"/api/cortes/{corte_id}/evidencia-financiera",
+        json=body,
+        headers={"Authorization": f"Bearer {_token_para(client, admin_login)}"},
+    )
+
+
+def test_historico_desconocido_no_inventa_deuda(client):
+    """T71 (RF-44): marcado desconocido → sin restante ni excedente; comision intacta."""
+    corte_id = _corte_para_abonos(client, "barbero_t71")
+    token = _token_para(client, "barbero_t71")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t71", Rol.ADMIN)
+    db.close()
+    assert _abonar(client, token, corte_id, "cliente", 30).status_code == 201
+    assert _evidencia(client, "barbero_t71", corte_id, {
+        "concepto": "cliente", "conocido": False, "evidencia": "x",
+    }).status_code == 403
+    assert _evidencia(client, "admin_t71", corte_id, {
+        "concepto": "cliente", "conocido": False, "evidencia": "sin comprobantes",
+    }).status_code == 200
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["estado"] == "desconocido"
+    assert saldos["cliente"]["restante"] == "0.00"
+    assert saldos["cliente"]["excedente"] == "0.00"
+    assert saldos["cliente"]["conocido"] is False
+    assert saldos["comision"]["estado"] == "pendiente"
+    assert saldos["comision"]["conocido"] is True
+
+
+def test_admin_completa_con_evidencia_sin_tocar_fecha(client):
+    """T71 (RF-54): completar restaura saldos + journal, sin sustituir fecha."""
+    from app.models.auditoria_corte import AuditoriaCorte as AuditoriaT71
+
+    corte_id = _corte_para_abonos(client, "barbero_t71b")
+    token = _token_para(client, "barbero_t71b")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t71b", Rol.ADMIN)
+    db.close()
+    assert _abonar(client, token, corte_id, "cliente", 30).status_code == 201
+    fecha_antes = client.get(f"/api/cortes/{corte_id}", headers={"Authorization": f"Bearer {token}"}).json()["fecha"]
+    assert _evidencia(client, "admin_t71b", corte_id, {
+        "concepto": "cliente", "conocido": False, "evidencia": "legajo incompleto",
+    }).status_code == 200
+    assert _evidencia(client, "admin_t71b", corte_id, {
+        "concepto": "cliente", "conocido": True, "evidencia": "comprobantes 1-3",
+    }).status_code == 200
+    saldos = _saldos(client, token, corte_id).json()
+    assert saldos["cliente"]["estado"] == "parcial"
+    assert saldos["cliente"]["restante"] == "70.00"
+    fecha_despues = client.get(f"/api/cortes/{corte_id}", headers={"Authorization": f"Bearer {token}"}).json()["fecha"]
+    assert fecha_despues == fecha_antes
+    db = TestingSessionLocal()
+    assert db.query(AuditoriaT71).filter(AuditoriaT71.corte_id == corte_id).count() >= 2
+    db.close()
