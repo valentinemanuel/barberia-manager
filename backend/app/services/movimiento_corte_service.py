@@ -156,3 +156,82 @@ def corte_bloqueado(db: Session, corte: Corte) -> bool:
         .first()
         is not None
     )
+
+
+class RevisionResuelta(ValueError):
+    """La revisión ya salió de ese estado: conflicto, sin efecto (HTTP 409)."""
+
+
+def _validar_importe_real(importe: Decimal) -> Decimal:
+    """Dinero real reconocido: Decimal finito, no negativo, ≤2 decimales."""
+    from decimal import Decimal as DecimalT59
+
+    if not isinstance(importe, DecimalT59):
+        raise ValueError("El importe real debe ser Decimal")
+    if not importe.is_finite():
+        raise ValueError("El importe real debe ser finito")
+    if importe.as_tuple().exponent < -2:
+        raise ValueError("El importe real debe tener como máximo dos decimales")
+    if importe < DecimalT59("0"):
+        raise ValueError("El importe real no puede ser negativo")
+    return importe
+
+
+def resolver_revision(
+    db: Session,
+    *,
+    admin: Usuario,
+    movimiento: MovimientoCorte,
+    veredicto: str,
+    motivo: str,
+    importe_real: Decimal | None = None,
+    operacion_uuid: str | None = None,
+) -> MovimientoCorte:
+    """Resuelve una revisión administrativa (paquete 9, RF-38/RF-53 parcial).
+
+    `real`: el dinero registrado era íntegro → el original pasa a aceptado
+    con su importe intacto (el sobrante sobre la obligación queda como
+    excedente en saldos, sin devolución automática).
+    `erroneo`: el registro era erróneo → el original queda en revisión y,
+    si hubo dinero real, se crea una compensatoria aceptada por ese importe
+    con referencia al original. Sin commit: la UoW la posee el llamador.
+    """
+    if movimiento.estado != EstadoMovimiento.REVISION:
+        raise RevisionResuelta("La revisión ya fue resuelta")
+    if not motivo or not motivo.strip():
+        raise ValueError("La resolución exige motivo")
+    if veredicto == "real":
+        movimiento.estado = EstadoMovimiento.ACEPTADO
+        movimiento.motivo = motivo.strip()
+        db.flush()
+        return movimiento
+    if veredicto != "erroneo":
+        raise ValueError("El veredicto debe ser real o erroneo")
+    real = _validar_importe_real(Decimal("0") if importe_real is None else importe_real)
+    if operacion_uuid is not None:
+        existente = (
+            db.query(MovimientoCorte).filter(MovimientoCorte.uuid == operacion_uuid).first()
+        )
+        if existente is not None:
+            return existente
+    movimiento.motivo = motivo.strip()
+    if real <= Decimal("0"):
+        # Sin dinero real: solo queda la traza del motivo en el original.
+        db.flush()
+        return movimiento
+    compensatoria = MovimientoCorte(
+        uuid=operacion_uuid or str(uuid4()),
+        corte_id=movimiento.corte_id,
+        concepto=movimiento.concepto,
+        tipo=TipoMovimiento.COMPENSACION,
+        importe=real,
+        autor_id=admin.id,
+        metodo_pago=movimiento.metodo_pago,
+        momento_real=movimiento.momento_real,
+        estado=EstadoMovimiento.ACEPTADO,
+        original_uuid=movimiento.uuid,
+        motivo=motivo.strip(),
+    )
+    db.add(compensatoria)
+    db.flush()
+    return compensatoria

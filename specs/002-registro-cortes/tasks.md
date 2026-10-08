@@ -767,7 +767,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - Implementar: `COMPENSACION`/`DEVOLUCION` en el Enum + `original_uuid`/`motivo`/`evidencia` nullable; `neto = abonos + compensaciones − devoluciones` (solo aceptados; revisión/rechazados aparte).
   - Hecho cuando: migración verificada en TEMP (vacía/legacy/fila/repetir) y saldos con excedente en verde.
 
-- [ ] **T59. Resolución admin de revisiones.** RF-38/RF-53 (parciales).
+- [x] **T59. Resolución admin de revisiones.** RF-38/RF-53 (parciales).
   - Dependencias: T58.
   - Tests primero: revisión por exceso con dinero real íntegro → resuelta: saldo cubierto hasta obligación + resto `excedente`, importe original intacto (sin recorte); revisión errónea → compensatoria con motivo referenciando el original; replay misma resolución no duplica efecto.
   - Implementar: `POST .../revisiones/{uuid}/resolver` (solo admin, misma UoW: original + compensación/evidencia atómicos, sin commit intermedio).
@@ -814,7 +814,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 | Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
 |---|---|---|---|
 | T58 | Rojo real: triple `AttributeError` (COMPENSACION/DEVOLUCION/excedente inexistentes) + `history` en 006 | Verde: `109 passed` (3 archivos) + `007` en TEMP (legacy + 1 fila: columnas agregadas, fila preservada) | DB estable (`bd4c32af…`); `finanzas_corte.py` (tipos + `original_uuid/motivo/evidencia` nullable) + `007_correctivos_corte.py` + `movimiento_corte_service.py` (`neto` = abonos + compensaciones con signo − devoluciones, solo aceptados; `excedente` aditivo, `restante` intacto) + `SaldoConcepto.excedente` (default, compat). |
-| T59 |  |  |  |
+| T59 | Rojo real: triple 404 (sin ruta resolver) | Verde: `112 passed` (3 archivos) | DB estable; `movimiento_corte_service.py` (`resolver_revision` + `RevisionResuelta`: real acepta original intacto; erróneo crea compensatoria +real con referencia o solo traza si 0; motivo obligatorio) + `movimientos_corte.py` (POST resolver solo admin 403, journal RESOLUCION misma UoW, `tipo/motivo/original_uuid/evidencia` en respuesta) + `auditoria_corte.py` (acciones correctivas) + `test_cortes.py`. Sin mutar importes ni UUID originales. |
 | T60 |  |  |  |
 | T61 |  |  |  |
 | T62 |  |  |  |

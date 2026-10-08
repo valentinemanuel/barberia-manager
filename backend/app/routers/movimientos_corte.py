@@ -1,7 +1,7 @@
 """Movimientos de corte por concepto (paquete 6, RF-16–RF-21 parcial)."""
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional
+from typing import Literal, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -10,10 +10,17 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import obtener_usuario_actual
+from app.models.auditoria_corte import AccionAuditoriaCorte
 from app.models.corte import Corte, MetodoPago
-from app.models.finanzas_corte import ConceptoMovimiento
+from app.models.finanzas_corte import ConceptoMovimiento, MovimientoCorte
 from app.models.usuario import Rol, Usuario
-from app.services.movimiento_corte_service import registrar_abono, saldos_corte
+from app.services.edicion_corte_service import auditar_cambio
+from app.services.movimiento_corte_service import (
+    RevisionResuelta,
+    registrar_abono,
+    resolver_revision,
+    saldos_corte,
+)
 
 router = APIRouter(prefix="/api/cortes", tags=["Movimientos"])
 
@@ -37,6 +44,11 @@ class MovimientoResponse(BaseModel):
     # Revisión offline (paquete 8, T52): aditivos opcionales.
     estado: Optional[str] = None
     motivo_revision: Optional[str] = None
+    # Correctivos (paquete 9, T59): aditivos opcionales.
+    tipo: Optional[str] = None
+    motivo: Optional[str] = None
+    original_uuid: Optional[str] = None
+    evidencia: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -114,6 +126,10 @@ def crear_movimiento(
     respuesta = MovimientoResponse.model_validate(movimiento)
     respuesta.estado = movimiento.estado.value if movimiento.estado else "aceptado"
     respuesta.motivo_revision = movimiento.motivo_revision
+    respuesta.tipo = movimiento.tipo.value if movimiento.tipo else None
+    respuesta.motivo = movimiento.motivo
+    respuesta.original_uuid = movimiento.original_uuid
+    respuesta.evidencia = movimiento.evidencia
     return respuesta
 
 
@@ -126,3 +142,83 @@ def obtener_saldos(
     """Saldos de cliente y comisión del corte (DTO personal, RF-21 parcial)."""
     corte = _corte_propio_o_gestion(db, corte_id, actor)
     return saldos_corte(db, corte)
+
+
+class ResolucionCrear(BaseModel):
+    """Resolución admin de una revisión (paquete 9, RF-53 parcial)."""
+
+    veredicto: Literal["real", "erroneo"]
+    motivo: str
+    importe_real: Optional[Decimal] = None
+    operacion_uuid: Optional[UUID] = None
+
+
+@router.post(
+    "/{corte_id}/revisiones/{movimiento_uuid}/resolver",
+    response_model=MovimientoResponse,
+)
+def resolver_revision_endpoint(
+    corte_id: int,
+    movimiento_uuid: str,
+    datos: ResolucionCrear,
+    db: Session = Depends(get_db),
+    actor: Usuario = Depends(obtener_usuario_actual),
+):
+    """Resuelve una revisión: dinero real íntegro o corrección compensatoria.
+
+    Solo admin (403 en otro caso). No edita importes registrados: acepta
+    el original o crea una compensatoria referenciada, con journal.
+    """
+    if actor.rol != Rol.ADMIN:
+        raise HTTPException(status_code=403, detail="Solo un admin resuelve revisiones")
+    corte = db.query(Corte).filter(Corte.id == corte_id).first()
+    if not corte:
+        raise HTTPException(status_code=404, detail="Corte no encontrado")
+    movimiento = (
+        db.query(MovimientoCorte)
+        .filter(
+            MovimientoCorte.corte_id == corte.id,
+            MovimientoCorte.uuid == movimiento_uuid,
+        )
+        .first()
+    )
+    if not movimiento:
+        raise HTTPException(status_code=404, detail="Movimiento no encontrado")
+    estado_antes = movimiento.estado.value if movimiento.estado else "aceptado"
+    try:
+        resultado = resolver_revision(
+            db,
+            admin=actor,
+            movimiento=movimiento,
+            veredicto=datos.veredicto,
+            motivo=datos.motivo,
+            importe_real=datos.importe_real,
+            operacion_uuid=str(datos.operacion_uuid) if datos.operacion_uuid else None,
+        )
+    except RevisionResuelta as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    auditar_cambio(
+        db,
+        corte_id=corte.id,
+        actor_id=actor.id,
+        accion=AccionAuditoriaCorte.RESOLUCION,
+        antes={"movimiento_uuid": movimiento.uuid, "estado": estado_antes},
+        despues={
+            "movimiento_uuid": movimiento.uuid,
+            "estado": movimiento.estado.value if movimiento.estado else None,
+            "resuelto_uuid": resultado.uuid,
+        },
+        motivo=datos.motivo,
+    )
+    db.commit()
+    db.refresh(resultado)
+    respuesta = MovimientoResponse.model_validate(resultado)
+    respuesta.estado = resultado.estado.value if resultado.estado else "aceptado"
+    respuesta.motivo_revision = resultado.motivo_revision
+    respuesta.tipo = resultado.tipo.value if resultado.tipo else None
+    respuesta.motivo = resultado.motivo
+    respuesta.original_uuid = resultado.original_uuid
+    respuesta.evidencia = resultado.evidencia
+    return respuesta

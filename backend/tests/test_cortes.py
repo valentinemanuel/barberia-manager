@@ -1826,3 +1826,90 @@ def test_compensacion_y_devolucion_mueven_neto(client):
     assert saldos["cliente"]["abonado"] == "50.00"
     assert saldos["cliente"]["restante"] == "50.00"
     assert saldos["cliente"]["excedente"] == "0.00"
+
+
+def _revision_por_exceso(client, login, importe="150.00"):
+    """T59: genera una revisión vía sync offline (exceso sobre 100)."""
+    import uuid as uuid_lib
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, f"{login}_adm", Rol.ADMIN)
+    db.close()
+    corte_id = _corte_para_abonos(client, login)
+    token = _token_para(client, login)
+    uuid_val = str(uuid_lib.uuid4())
+    r = client.post(
+        "/api/sync/",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"operaciones": [{
+            "id": uuid_val,
+            "accion": "registrar_abono_v2",
+            "datos": {
+                "operacion_uuid": uuid_val,
+                "corte_id": corte_id,
+                "concepto": "cliente",
+                "importe": importe,
+                "metodo_pago": "efectivo",
+                "modo_captura": "offline",
+            },
+        }]},
+    )
+    assert r.json()["resultados"][0]["estado"] == "revision"
+    return corte_id, uuid_val
+
+
+def _resolver(client, admin_login, corte_id, mov_uuid, body):
+    return client.post(
+        f"/api/cortes/{corte_id}/revisiones/{mov_uuid}/resolver",
+        json=body,
+        headers={"Authorization": f"Bearer {_token_para(client, admin_login)}"},
+    )
+
+
+def test_resolver_revision_dinero_real_cubre_y_excedente(client):
+    """T59 (RF-53): real íntegro → acepta original sin recorte; resto excedente."""
+    corte_id, mov_uuid = _revision_por_exceso(client, "barbero_t59")
+    admin = "barbero_t59_adm"
+    r = _resolver(client, admin, corte_id, mov_uuid, {"veredicto": "real", "motivo": "verificado en caja"})
+    assert r.status_code == 200
+    assert r.json()["estado"] == "aceptado"
+    assert r.json()["importe"] == "150.00"
+    saldos = _saldos(client, _token_para(client, "barbero_t59"), corte_id).json()
+    assert saldos["cliente"]["abonado"] == "150.00"
+    assert saldos["cliente"]["restante"] == "0.00"
+    assert saldos["cliente"]["excedente"] == "50.00"
+
+
+def test_resolver_revision_erronea_crea_compensatoria(client):
+    """T59 (RF-53): erróneo con real 50 → compensatoria +50; original intacto."""
+    corte_id, mov_uuid = _revision_por_exceso(client, "barbero_t59b")
+    admin = "barbero_t59b_adm"
+    r = _resolver(
+        client, admin, corte_id, mov_uuid,
+        {"veredicto": "erroneo", "motivo": "duplicado con otro cobro", "importe_real": "50.00"},
+    )
+    assert r.status_code == 200
+    assert r.json()["tipo"] == "compensacion"
+    assert r.json()["importe"] == "50.00"
+    assert r.json()["original_uuid"] == mov_uuid
+    saldos = _saldos(client, _token_para(client, "barbero_t59b"), corte_id).json()
+    assert saldos["cliente"]["abonado"] == "50.00"
+    assert saldos["cliente"]["restante"] == "50.00"
+
+
+def test_resolver_exige_motivo_y_admin(client):
+    """T59: sin motivo → 400; barbero → 403; ya resuelta → 409."""
+    corte_id, mov_uuid = _revision_por_exceso(client, "barbero_t59c")
+    admin = "barbero_t59c_adm"
+    assert _resolver(
+        client, admin, corte_id, mov_uuid, {"veredicto": "real", "motivo": ""}
+    ).status_code == 400
+    assert _resolver(
+        client, "barbero_t59c", corte_id, mov_uuid, {"veredicto": "real", "motivo": "x"}
+    ).status_code == 403
+    assert _resolver(
+        client, admin, corte_id, mov_uuid, {"veredicto": "real", "motivo": "ok"}
+    ).status_code == 200
+    assert _resolver(
+        client, admin, corte_id, mov_uuid, {"veredicto": "real", "motivo": "otra vez"}
+    ).status_code == 409
