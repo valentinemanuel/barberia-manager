@@ -97,7 +97,7 @@ pytest tests/ -v --cov=app
 - Plantilla sin credenciales: `opencode.json.example`. Preparación y validación en `docs/mcp.md`.
 - **context7**: documentación actualizada de librerías.
 - **playwright**: pruebas de navegador/E2E de la PWA.
-- **sqlite**: acceso a `backend/barberia.db`; requiere `uvx`. La plantilla conserva el pin histórico `mcp==1.2.0`; verificar la conexión antes de usarlo. No modificar datos reales sin autorización.
+- **sqlite**: acceso a `backend/barberia.db`; requiere `uvx`. Configuración verificada (2026-10-09): `mcp-server-sqlite` con `--with mcp==1.9.4 --with pydantic==2.11.7`. Sin esos pines falla al iniciar (pydantic ≥2.12 quitó `eval_type_backport`; mcp ≥1.16 quitó `Server.list_resources`). En este entorno `uvx` no está en el PATH: usar la ruta absoluta del `Scripts` del Python de Microsoft Store. No modificar datos reales sin autorización.
 - **github**: usa `GITHUB_PERSONAL_ACCESS_TOKEN` del entorno, nunca un token literal en archivos versionados.
 - No usar `chrome-devtools-mcp`: inestable con Edge; usar Playwright MCP.
 
