@@ -977,7 +977,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - Implementar: `models/imputacion_corte.py` + `011` + regla en `jornada_service` + hook en `registrar_abono`/sync (misma UoW, sin commit).
   - Hecho cuando: tests en verde y ningún dinero aceptado queda sin estado de imputación.
 
-- [ ] **T76. Pertenencia, bloqueo y tardíos + momento en sync.** RF-24/RF-49/RF-51 (parciales).
+- [x] **T76. Pertenencia, bloqueo y tardíos + momento en sync.** RF-24/RF-49/RF-51 (parciales).
   - Dependencias: T74–T75.
   - Tests primero: cierre de jornada bloquea sus cortes para el barbero (PATCH/anular/sync-edición → 409 o intervención); corte tardío aceptado después → vinculado por ajuste sin tocar el snapshot (RF-49); `crear_corte_v2` con `momento_real` pasado lo conserva (no `now`); fecha compartida con cierre legacy NO bloquea (sin evidencia no hay pertenencia).
   - Implementar: `PertenenciaCierre` + guards + `momento_real` en `_sincronizar_corte_v2` + `AjusteCierre` para tardíos.
@@ -1019,7 +1019,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 |---|---|---|---|
 | T74 | Rojo real: cuádruple failed (404 sin router/modelo) + `ZoneInfoNotFoundError` en Windows | Verde: `27 passed` (2 archivos) + `010` en TEMP (vacía/guard/repetir) | Divulgación: `barberia.db` ganó tablas vacías `jornadas_caja` + `pertenencias_cierre` por `create_all` (0 filas, legacy intacto; baseline `8c5a43be…`). `jornada_caja.py` + `010` + `jornada_service.py` (fecha_negocio pura, abrir/cerrar con 409, sin apertura automática) + `jornadas.py` (solo admin 403) + `main.py` (registro) + `requirements.txt` (`tzdata`, solo datos de zona). |
 | T75 | Rojo real: cuádruple failed (sin modelo/regla/hook) | Verde: `102 passed` (2 archivos) + `011` en TEMP (vacía/guard/repetir) | Divulgación: `barberia.db` ganó tabla vacía `imputaciones_movimiento` por `create_all` (0 filas; baseline `86e6ea41…`). `imputacion_corte.py` + `011` + `jornada_service` (real abierta → allí; cerrada + abierta actual → ajuste; sin abierta → pendiente; una sola abierta) + hook en abono/compensación/devolución/resolución + `imputacion` en respuesta. Saldos intactos (pendiente igual mueve saldo). |
-| T76 |  |  |  |
+| T76 | Rojo real: cuádruple failed (sin pertenencia/vínculo/momento); 2 ajustes honestos en tests (corte dentro de la jornada vía retroactivo admin; campo legacy faltante) | Verde: `106 passed` (2 archivos) + `012` en TEMP (vacía/guard/repetir) | Divulgación: `barberia.db` ganó tabla vacía `ajustes_cierre` por `create_all` (0 filas; baseline `8ca1788e…`). `jornada_caja.py` (`es_tardio` + `AjusteCierre`) + `012` + `jornada_service` (incorporar al cerrar, tardío por ajuste, `corte_en_cierre`) + `corte_bloqueado` con pertenencia verificada + momento en sync v2 (con hash; sin journals viejos con UUID en producción). Legacy-fecha no bloquea por construcción. |
 | T77 |  |  |  |
 | T78 |  |  |  |
 | T79 |  |  |  |

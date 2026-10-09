@@ -1,12 +1,15 @@
 from datetime import datetime
 from sqlalchemy import (
+    Boolean,
     Column,
     Date,
     DateTime,
     Enum,
     ForeignKey,
     Integer,
+    JSON,
     Numeric,
+    String,
     UniqueConstraint,
 )
 import enum
@@ -47,7 +50,7 @@ class PertenenciaCierre(Base):
     """Cortes incorporados a una jornada (paquete 11, RF-49 parcial).
 
     Inmutable: el snapshot se congela al incorporar; los tardíos se
-    vinculan por ajuste sin tocar el snapshot original.
+    vinculan por ajuste sin tocar el snapshot original (`es_tardio`).
     """
 
     __tablename__ = "pertenencias_cierre"
@@ -63,3 +66,33 @@ class PertenenciaCierre(Base):
     porcentaje_barbero = Column(Numeric(5, 2), nullable=False)
     parte_barbero = Column(Numeric(10, 2), nullable=False)
     version_corte = Column(Integer, nullable=False)
+    # Tardío RF-49 (paquete 11, T76): vinculado tras el cierre por ajuste.
+    es_tardio = Column(Boolean, nullable=True)
+
+
+class TipoAjuste(str, enum.Enum):
+    """Tipo de ajuste posterior (paquete 11, RF-39/RF-49 parcial)."""
+
+    TARDIO = "tardio"
+    CORRECCION = "correccion"
+
+
+class AjusteCierre(Base):
+    """Ajuste referenciado sin mutar el cierre original (RF-39/RF-49).
+
+    Append-only: describe qué cambió y dónde se imputa, con autor y
+    motivo. Nunca reabre ni reemplaza cierres.
+    """
+
+    __tablename__ = "ajustes_cierre"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tipo = Column(Enum(TipoAjuste), nullable=False)
+    corte_id = Column(Integer, ForeignKey("cortes.id"), nullable=True)
+    movimiento_uuid = Column(String(36), nullable=True)
+    jornada_origen_id = Column(Integer, ForeignKey("jornadas_caja.id"), nullable=True)
+    jornada_destino_id = Column(Integer, ForeignKey("jornadas_caja.id"), nullable=True)
+    detalle = Column(JSON, nullable=False)
+    autor_id = Column(Integer, ForeignKey("usuarios.id"), nullable=False)
+    motivo = Column(String(255), nullable=False)
+    creado_en = Column(DateTime, default=datetime.utcnow, nullable=False)

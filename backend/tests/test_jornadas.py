@@ -64,6 +64,13 @@ def _headers(token):
     return {"Authorization": f"Bearer {token}"}
 
 
+def db_id(login):
+    db = TestingSessionLocal()
+    uid = db.query(Usuario).filter(Usuario.usuario == login).first().id
+    db.close()
+    return uid
+
+
 def test_fecha_negocio_zona_buenos_aires():
     """T74 (RNF-2): la jornada cambia a las 00:00 de Buenos Aires (UTC-3)."""
     from app.services.jornada_service import fecha_negocio
@@ -230,3 +237,109 @@ def test_una_sola_jornada_abierta(client):
     assert client.post("/api/jornadas/abrir", headers=auth, json={"fecha": "2026-10-09"}).status_code == 409
     assert client.post("/api/jornadas/cerrar", headers=auth, json={"fecha": "2026-10-08"}).status_code == 200
     assert client.post("/api/jornadas/abrir", headers=auth, json={"fecha": "2026-10-09"}).status_code == 201
+
+
+def _servicio_y_usuarios(db, barbero, porcentaje="50", precio="100.00"):
+    from decimal import Decimal
+    from app.models.servicio import Servicio as ServicioT76
+
+    _crear_usuario(db, barbero, Rol.BARBERO)
+    db.query(Usuario).filter(Usuario.usuario == barbero).first().porcentaje_ganancia = Decimal(porcentaje)
+    db.add(ServicioT76(nombre=f"Servicio {barbero}", descripcion="x", precio=Decimal(precio), duracion_minutos=30, activo=True))
+    db.commit()
+    return db.query(ServicioT76).filter(ServicioT76.nombre == f"Servicio {barbero}").first().id
+
+
+def test_cierre_bloquea_cortes_para_barbero(client):
+    """T76 (RF-24): incorporado al cierre → 409 barbero; admin con motivo → 200."""
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_j76", Rol.ADMIN)
+    servicio_id = _servicio_y_usuarios(db, "barb_j76")
+    db.close()
+    auth_admin = _headers(_token(client, "admin_j76"))
+    auth = _headers(_token(client, "barb_j76"))
+    assert client.post("/api/jornadas/abrir", headers=auth_admin, json={"fecha": "2026-10-08"}).status_code == 201
+    momento = "2026-10-08T10:00:00"
+    corte_id = client.post("/api/cortes/", headers=auth_admin, json={
+        "servicio_id": servicio_id, "metodo_pago": "efectivo",
+        "barbero_id": db_id("barb_j76"), "momento_real": momento,
+    }).json()["id"]
+    assert client.post("/api/jornadas/cerrar", headers=auth_admin, json={"fecha": "2026-10-08"}).status_code == 200
+    assert client.patch(f"/api/cortes/{corte_id}", json={"metodo_pago": "tarjeta"}, headers=auth).status_code == 409
+    assert client.post(f"/api/cortes/{corte_id}/anular", json={}, headers=auth).status_code == 409
+    r = client.patch(f"/api/cortes/{corte_id}", json={"metodo_pago": "tarjeta", "motivo": "ajuste"},
+                     headers=auth_admin)
+    assert r.status_code == 200
+
+
+def test_tardio_vinculado_por_ajuste_sin_tocar_snapshot(client):
+    """T76 (RF-49): aceptado tras el cierre → vinculado por ajuste, snapshot intacto."""
+    import uuid as uuid_lib
+    from app.models.jornada_caja import PertenenciaCierre
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_j76b", Rol.ADMIN)
+    servicio_id = _servicio_y_usuarios(db, "barb_j76b")
+    db.close()
+    auth_admin = _headers(_token(client, "admin_j76b"))
+    token = _token(client, "barb_j76b")
+    assert client.post("/api/jornadas/abrir", headers=auth_admin, json={"fecha": "2026-10-08"}).status_code == 201
+    assert client.post("/api/jornadas/cerrar", headers=auth_admin, json={"fecha": "2026-10-08"}).status_code == 200
+    uuid_val = str(uuid_lib.uuid4())
+    r = client.post("/api/sync/", headers=_headers(token), json={"operaciones": [{
+        "id": uuid_val, "accion": "crear_corte_v2", "datos": {
+            "operacion_uuid": uuid_val, "servicio_id": servicio_id,
+            "metodo_pago": "efectivo", "modo_captura": "offline",
+            "momento_real": "2026-10-08T10:00:00",
+        },
+    }]})
+    assert r.json()["resultados"][0]["aceptada"] is True
+    corte_id = r.json()["resultados"][0]["corte_id"]
+    db = TestingSessionLocal()
+    pertenencias = db.query(PertenenciaCierre).filter(PertenenciaCierre.corte_id == corte_id).all()
+    assert len(pertenencias) == 1
+    assert pertenencias[0].es_tardio is True
+    assert pertenencias[0].precio == 100
+    db.close()
+    assert client.patch(f"/api/cortes/{corte_id}", json={"metodo_pago": "tarjeta"},
+                        headers=_headers(token)).status_code == 409
+
+
+def test_momento_sync_se_conserva(client):
+    """T76 (RF-9/51): crear_corte_v2 conserva el momento real (no now)."""
+    import uuid as uuid_lib
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_j76c", Rol.ADMIN)
+    servicio_id = _servicio_y_usuarios(db, "barb_j76c")
+    db.close()
+    token = _token(client, "barb_j76c")
+    uuid_val = str(uuid_lib.uuid4())
+    r = client.post("/api/sync/", headers=_headers(token), json={"operaciones": [{
+        "id": uuid_val, "accion": "crear_corte_v2", "datos": {
+            "operacion_uuid": uuid_val, "servicio_id": servicio_id,
+            "metodo_pago": "efectivo", "modo_captura": "offline",
+            "momento_real": "2020-05-05T10:00:00",
+        },
+    }]})
+    corte_id = r.json()["resultados"][0]["corte_id"]
+    detalle = client.get(f"/api/cortes/{corte_id}", headers=_headers(token)).json()
+    assert detalle["fecha"].startswith("2020-05-05T10:00:00")
+
+
+def test_cierre_legacy_no_bloquea(client):
+    """T76: compartir fecha con un cierre legacy no es pertenencia (sin evidencia)."""
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_j76d", Rol.ADMIN)
+    servicio_id = _servicio_y_usuarios(db, "barb_j76d")
+    db.close()
+    auth_admin = _headers(_token(client, "admin_j76d"))
+    assert client.post("/api/cierre-caja/", headers=auth_admin, json={
+        "fecha": "2026-10-08T10:00:00", "total_cortes": "100.00", "total_productos": "0.00",
+        "total_consumibles": "0.00", "total_ingresos": "100.00", "total_gastos": "0.00",
+        "total_en_caja": "100.00", "monto_retirado": "0.00",
+    }).status_code in (200, 201)
+    token = _token(client, "barb_j76d")
+    corte_id = _corte_simple(client, token, servicio_id)
+    assert client.patch(f"/api/cortes/{corte_id}", json={"metodo_pago": "tarjeta"},
+                        headers=_headers(token)).status_code == 200

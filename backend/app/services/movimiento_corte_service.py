@@ -194,14 +194,24 @@ def saldos_corte(db: Session, corte: Corte) -> dict:
 
 
 def corte_bloqueado(db: Session, corte: Corte) -> bool:
-    """Bloqueo calculado (RF-23/25 base): verdadero desde el primer pago.
+    """Bloqueo calculado (RF-23/25 + RF-24/49, T76): primer pago o cierre.
 
-    La pertenencia a cierre corresponde al paquete de jornadas; la edición
-    aún no existe (paquete 7), esto solo expone el estado.
+    La pertenencia es verificada (tabla), nunca inferida por fecha: un
+    cierre legacy que comparte fecha no bloquea. La revisión también
+    bloquea (decisión del paquete 9, sin cambios).
     """
-    return (
+    from app.models.jornada_caja import PertenenciaCierre
+
+    if (
         db.query(MovimientoCorte)
         .filter(MovimientoCorte.corte_id == corte.id)
+        .first()
+        is not None
+    ):
+        return True
+    return (
+        db.query(PertenenciaCierre)
+        .filter(PertenenciaCierre.corte_id == corte.id)
         .first()
         is not None
     )

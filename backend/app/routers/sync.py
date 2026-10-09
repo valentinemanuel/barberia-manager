@@ -121,6 +121,22 @@ def _sincronizar_corte_v2(
             motivo="modo_invalido",
             notificacion="El modo_captura debe ser online u offline.",
         )
+    momento = None
+    momento_raw = op.datos.get("momento_real")
+    if momento_raw:
+        from datetime import datetime as datetime_sync
+        from datetime import timezone as timezone_sync
+
+        try:
+            momento = datetime_sync.fromisoformat(str(momento_raw))
+            if momento.tzinfo is not None:
+                momento = momento.astimezone(timezone_sync.utc).replace(tzinfo=None)
+        except ValueError as e:
+            return ResultadoOperacion(
+                id=op.id, accion=op.accion, aceptada=False, status_code=400,
+                motivo=f"momento_invalido: {e}",
+                notificacion="El momento_real no es una fecha válida.",
+            )
     try:
         servicio_id = int(op.datos["servicio_id"])
     except (KeyError, TypeError, ValueError) as e:
@@ -149,7 +165,10 @@ def _sincronizar_corte_v2(
         )
 
     def _efecto_v2():
-        creado = crear_corte(db, usuario, servicio_id, metodo, aceptar_inactivo=True)
+        creado = crear_corte(
+            db, usuario, servicio_id, metodo, aceptar_inactivo=True,
+            momento_real=momento,
+        )
         return {
             "corte_id": creado.id,
             "estado": "aceptada",
@@ -172,6 +191,7 @@ def _sincronizar_corte_v2(
                 "servicio_id": str(servicio_id),
                 "metodo_pago": str(metodo),
                 "modo_captura": modo,
+                "momento_real": momento.isoformat() if momento else "",
             },
             modo="offline",
             ejecutar=_efecto_v2,
