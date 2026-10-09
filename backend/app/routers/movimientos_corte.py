@@ -18,6 +18,7 @@ from app.services.edicion_corte_service import auditar_cambio
 from app.services.movimiento_corte_service import (
     OriginalAusente,
     RevisionResuelta,
+    _candado_abono,
     _candado_devolucion,
     registrar_abono,
     registrar_compensacion,
@@ -119,21 +120,24 @@ def crear_movimiento(
                 status_code=400, detail="El momento real no puede ser futuro"
             )
     try:
-        movimiento = registrar_abono(
-            db,
-            autor=actor,
-            corte=corte,
-            concepto=datos.concepto,
-            importe=datos.importe,
-            metodo=datos.metodo_pago,
-            momento_real=momento,
-            uuid=str(datos.uuid) if datos.uuid is not None else None,
-        )
+        with _candado_abono:
+            movimiento = registrar_abono(
+                db,
+                autor=actor,
+                corte=corte,
+                concepto=datos.concepto,
+                importe=datos.importe,
+                metodo=datos.metodo_pago,
+                momento_real=momento,
+                uuid=str(datos.uuid) if datos.uuid is not None else None,
+            )
+            db.commit()
     except ConflictoIdentidad as e:
+        db.rollback()
         raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
+        db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
-    db.commit()
     db.refresh(movimiento)
     return _respuesta_movimiento(db, movimiento)
 

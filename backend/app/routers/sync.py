@@ -299,16 +299,19 @@ def _sincronizar_abono_v2(
         )
     try:
         from app.models.corte import MetodoPago as MetodoAbono
+        from app.services.movimiento_corte_service import _candado_abono as _candado_sync
 
         try:
             metodo = MetodoAbono(op.datos.get("metodo_pago") or "efectivo")
         except ValueError:
             metodo = MetodoAbono.EFECTIVO
-        movimiento = registrar_abono(
-            db, autor=usuario, corte=corte, concepto=concepto,
-            importe=importe, metodo=metodo, momento_real=momento,
-            uuid=str(uuid_val), origen="offline",
-        )
+        with _candado_sync:
+            movimiento = registrar_abono(
+                db, autor=usuario, corte=corte, concepto=concepto,
+                importe=importe, metodo=metodo, momento_real=momento,
+                uuid=str(uuid_val), origen="offline",
+            )
+            db.commit()
     except ConflictoIdentidad as e:
         db.rollback()
         return ResultadoOperacion(
@@ -321,7 +324,6 @@ def _sincronizar_abono_v2(
             id=op.id, accion=op.accion, aceptada=False, status_code=400,
             motivo=str(e), notificacion=f"Abono rechazado: {e}",
         )
-    db.commit()
     estado = movimiento.estado.value if movimiento.estado else "aceptado"
     if estado == "revision":
         return ResultadoOperacion(

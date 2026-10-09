@@ -1091,7 +1091,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - Implementar: normalizar `momento.isoformat()`, comparar hash en abonos, UUID obligatoria en resolución-erroneo, evidencia si compensación > 0.
   - Hecho cuando: tests en verde y ningún replay crea ni recalcula de más.
 
-- [ ] **T87. UoW dura SQLite + fix 008.** RNF-6 + gate despliegue.
+- [x] **T87. UoW dura SQLite + fix 008.** RNF-6 + gate despliegue.
   - Dependencias: ninguna.
   - Tests primero: carrera de abonos ordinarios paralelos no supera el saldo (serialización); `upgrade head` en TEMP vacía llega a head (008 tolera tablas ausentes); documentar límite multi-worker/PG en `plan.md`/tasks.
   - Implementar: serialización mínima en registro crítico + guard 008; sin protocolo PG (deuda de spec hija).
@@ -1116,6 +1116,6 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 | T84 | Rojo real: 9 puentes (3 inputs + 3 displays + duplicado de interfaz) | Verde: `VERDE T84` + T82/T83 + `npm run build` OK (exit 0) | Solo frontend: `cortesApi.ts` (`validarPorcentajeStr`) + Gestion* (precio/porcentaje como strings validados, display exacto; conteos enteros intactos) + Reportes (vía exacta + interfaz única). Incidente honesto: script con `≤` truncó GestionUsuarios (consola Windows); restaurado por git y rehecho con ediciones. Locale/diseño intactos. |
 | T85 | Rojo real: doble 404 (sin endpoint) | Verde: `116 passed` (2 archivos) | DB estable; `jornada_service.py` (`imputar_pendientes` idempotente por estado) + `jornadas.py` (POST solo admin 403/404) + tests (imputa, replay 0, solo su jornada, 403). Sin auto-aplicar nada más. |
 | T86 | Rojo real: múltiple (409/400/acuse/hash sin implementar) | Verde: `140 passed` (3 archivos) | DB estable; 5 endurecimientos: erroneo exige UUID (409; migración honesta del test T59), compensación positiva y real-erroneo exigen evidencia, replay real→acuse vía journal (router sin duplicar journal; migración del test T59), UUID con distinto payload→409 en abono/compensación/devolución, momento normalizado (`Z`, micro 0) en hash. |
-| T87 |  |  |  |
+| T87 | Rojo: carrera sin cobertura (test nuevo) + 008 fallaba en vacía (P2-4 confirmado); incidente: no-op unió def+docstring (reparado, sintaxis ok) | Verde: `118 passed` (2 archivos) + TEMP vacía a head | DB estable; `_candado_abono` en POST + sync (check+insert+commit; carrera 201+400 determinista) + guard backfill 008 (solo con tabla cortes). Límite monoproceso/multi-worker/PG documentado aquí y en código; sin protocolo PG. |
 | T88 |  |  |  |
 | T89 |  |  |  |

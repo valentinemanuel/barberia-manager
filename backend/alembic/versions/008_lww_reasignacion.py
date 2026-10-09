@@ -66,12 +66,16 @@ def upgrade() -> None:
             with op.batch_alter_table("movimientos_corte") as batch:
                 batch.add_column(sa.Column("profesional_id", sa.Integer(), nullable=True))
             # Backfill: la comisión pertenecía al titular vigente entonces.
-            # Solo nulos (repetible; no pisa correcciones del admin).
-            op.execute(
-                "UPDATE movimientos_corte SET profesional_id = "
-                "(SELECT barbero_id FROM cortes WHERE cortes.id = movimientos_corte.corte_id) "
-                "WHERE concepto = 'comision' AND profesional_id IS NULL"
-            )
+            # Solo nulos (repetible; no pisa correcciones del admin). Sin
+            # tabla cortes (instalación vacía) no hay nada que rellenar.
+            if "cortes" in tablas:
+                op.execute(
+                    "UPDATE movimientos_corte SET profesional_id = "
+                    "(SELECT barbero_id FROM cortes WHERE cortes.id = movimientos_corte.corte_id) "
+                    "WHERE concepto = 'comision' AND profesional_id IS NULL"
+                )
+            else:
+                print("INFO 008_lww_reasignacion: sin cortes, backfill omitido.")
         else:
             print("INFO 008_lww_reasignacion: movimientos ya migrada, nada que crear.")
     else:

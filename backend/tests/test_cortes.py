@@ -2465,3 +2465,18 @@ def test_admin_completa_con_evidencia_sin_tocar_fecha(client):
     db = TestingSessionLocal()
     assert db.query(AuditoriaT71).filter(AuditoriaT71.corte_id == corte_id).count() >= 2
     db.close()
+
+
+def test_abono_concurrente_no_supera_saldo(client):
+    """T87 (RF-41): dos abonos de 60 sobre saldo 100 → uno 201 y otro 400."""
+    import concurrent.futures
+
+    corte_id = _corte_para_abonos(client, "barbero_t87")
+    token = _token_para(client, "barbero_t87")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        estados = sorted(pool.map(
+            lambda _: _abonar(client, token, corte_id, "cliente", "60.00").status_code,
+            range(2),
+        ))
+    assert estados == [201, 400]
+    assert _saldos(client, token, corte_id).json()["cliente"]["abonado"] == "60.00"

@@ -27,6 +27,11 @@ from app.services.dinero_cortes import validar_importe_abono
 # multi-worker/PostgreSQL exigirá locks de fila (protocolo del plan §3).
 _candado_devolucion = threading.Lock()
 
+# Serialización mínima de abonos ordinarios (paquete 12, T87, RF-41):
+# mismo patrón que devoluciones. Sin esto, dos abonos paralelos pueden
+# superar el saldo validado por separado. Límite monoproceso documentado.
+_candado_abono = threading.Lock()
+
 
 def registrar_abono(
     db: Session,
