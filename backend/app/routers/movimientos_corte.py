@@ -53,6 +53,8 @@ class MovimientoResponse(BaseModel):
     motivo: Optional[str] = None
     original_uuid: Optional[str] = None
     evidencia: Optional[str] = None
+    # Imputación (paquete 11, T75): aditivo opcional.
+    imputacion: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -129,11 +131,15 @@ def crear_movimiento(
         raise HTTPException(status_code=400, detail=str(e))
     db.commit()
     db.refresh(movimiento)
-    return _respuesta_movimiento(movimiento)
+    return _respuesta_movimiento(db, movimiento)
 
 
-def _respuesta_movimiento(movimiento: MovimientoCorte) -> MovimientoResponse:
+def _respuesta_movimiento(
+    db: Session, movimiento: MovimientoCorte
+) -> MovimientoResponse:
     """Serializa un movimiento con los campos correctivos aditivos."""
+    from app.models.imputacion_corte import ImputacionMovimiento
+
     respuesta = MovimientoResponse.model_validate(movimiento)
     respuesta.estado = movimiento.estado.value if movimiento.estado else "aceptado"
     respuesta.motivo_revision = movimiento.motivo_revision
@@ -141,6 +147,12 @@ def _respuesta_movimiento(movimiento: MovimientoCorte) -> MovimientoResponse:
     respuesta.motivo = movimiento.motivo
     respuesta.original_uuid = movimiento.original_uuid
     respuesta.evidencia = movimiento.evidencia
+    fila = (
+        db.query(ImputacionMovimiento)
+        .filter(ImputacionMovimiento.movimiento_uuid == movimiento.uuid)
+        .first()
+    )
+    respuesta.imputacion = fila.estado.value if fila else None
     return respuesta
 
 
@@ -174,7 +186,7 @@ def listar_movimientos(
         .order_by(MovimientoCorte.id)
         .all()
     )
-    return [_respuesta_movimiento(fila) for fila in filas]
+    return [_respuesta_movimiento(db, fila) for fila in filas]
 
 
 class ResolucionCrear(BaseModel):
@@ -247,7 +259,7 @@ def resolver_revision_endpoint(
     )
     db.commit()
     db.refresh(resultado)
-    return _respuesta_movimiento(resultado)
+    return _respuesta_movimiento(db, resultado)
 
 
 class CompensacionCrear(BaseModel):
@@ -309,7 +321,7 @@ def crear_compensacion(
     )
     db.commit()
     db.refresh(fila)
-    return _respuesta_movimiento(fila)
+    return _respuesta_movimiento(db, fila)
 
 
 class DevolucionCrear(BaseModel):
@@ -370,4 +382,4 @@ def crear_devolucion(
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
     db.refresh(fila)
-    return _respuesta_movimiento(fila)
+    return _respuesta_movimiento(db, fila)

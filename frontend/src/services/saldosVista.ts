@@ -21,6 +21,7 @@ export interface MovimientoVista {
   motivo_revision?: string | null;
   tipo?: string | null;
   motivo?: string | null;
+  imputacion?: string | null;
 }
 
 /** Texto del excedente solo cuando hay sobrante; `null` si es cero. */
@@ -58,4 +59,18 @@ export function motivosVisibles(movimientos: MovimientoVista[]): string[] {
     if (m.motivo && m.motivo.trim().length > 0) salida.push(m.motivo);
   }
   return salida;
+}
+
+/**
+ * Aviso de imputación pendiente (RF-50/RF-53, T80): el saldo financiero
+ * se mantiene y se solicita apertura administrativa. `null` si nada
+ * pendiente.
+ */
+export function resumenImputacion(movimientos: MovimientoVista[]): string | null {
+  for (const m of movimientos) {
+    if (m.imputacion === 'pendiente') {
+      return 'Pendiente de imputación: se solicita apertura administrativa.';
+    }
+  }
+  return null;
 }

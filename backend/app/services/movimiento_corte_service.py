@@ -91,6 +91,7 @@ def registrar_abono(
     )
     db.add(movimiento)
     db.flush()
+    _imputar_aceptado(db, movimiento)
     return movimiento
 
 
@@ -193,14 +194,24 @@ def saldos_corte(db: Session, corte: Corte) -> dict:
 
 
 def corte_bloqueado(db: Session, corte: Corte) -> bool:
-    """Bloqueo calculado (RF-23/25 base): verdadero desde el primer pago.
+    """Bloqueo calculado (RF-23/25 + RF-24/49, T76): primer pago o cierre.
 
-    La pertenencia a cierre corresponde al paquete de jornadas; la edición
-    aún no existe (paquete 7), esto solo expone el estado.
+    La pertenencia es verificada (tabla), nunca inferida por fecha: un
+    cierre legacy que comparte fecha no bloquea. La revisión también
+    bloquea (decisión del paquete 9, sin cambios).
     """
-    return (
+    from app.models.jornada_caja import PertenenciaCierre
+
+    if (
         db.query(MovimientoCorte)
         .filter(MovimientoCorte.corte_id == corte.id)
+        .first()
+        is not None
+    ):
+        return True
+    return (
+        db.query(PertenenciaCierre)
+        .filter(PertenenciaCierre.corte_id == corte.id)
         .first()
         is not None
     )
@@ -256,6 +267,7 @@ def resolver_revision(
         movimiento.estado = EstadoMovimiento.ACEPTADO
         movimiento.motivo = motivo.strip()
         db.flush()
+        _imputar_aceptado(db, movimiento)
         return movimiento
     if veredicto != "erroneo":
         raise ValueError("El veredicto debe ser real o erroneo")
@@ -287,7 +299,23 @@ def resolver_revision(
     )
     db.add(compensatoria)
     db.flush()
+    _imputar_aceptado(db, compensatoria)
     return compensatoria
+
+
+def _imputar_aceptado(db: Session, movimiento: MovimientoCorte) -> None:
+    """Imputa el movimiento si quedó aceptado (paquete 11, T75, RF-45/50).
+
+    Las revisiones no tienen dinero reconocido: se imputan al resolverse.
+    """
+    from app.services.jornada_service import imputar_movimiento
+
+    if movimiento.estado != EstadoMovimiento.ACEPTADO:
+        return
+    momento = movimiento.momento_real or movimiento.registrado_en
+    if momento is None:
+        momento = datetime.utcnow()
+    imputar_movimiento(db, movimiento_uuid=movimiento.uuid, momento=momento)
 
 
 def _validar_importe_compensacion(importe: Decimal) -> Decimal:
@@ -359,6 +387,7 @@ def registrar_compensacion(
     )
     db.add(fila)
     db.flush()
+    _imputar_aceptado(db, fila)
     return fila
 
 
@@ -419,4 +448,5 @@ def registrar_devolucion(
     )
     db.add(fila)
     db.flush()
+    _imputar_aceptado(db, fila)
     return fila

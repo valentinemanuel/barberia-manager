@@ -11,3 +11,4 @@ python-multipart==0.0.6
 alembic==1.13.0
 pytest==7.4.3
 httpx==0.25.2
+tzdata==2025.2  # zoneinfo en Windows (jornada America/Argentina/Buenos_Aires)
