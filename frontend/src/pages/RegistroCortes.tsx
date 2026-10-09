@@ -12,14 +12,21 @@ import {
   estimarComisionCentavos,
   pesosStrACentavos,
 } from '../services/operacionesCortes'
+import {
+  crearCortesApiAxios,
+  porcentajeACentesimas,
+} from '../services/cortesApi'
 import { Boton, Campo, Segmentado, Vacio, useToast } from '../components/ui'
-import { formatearMoneda } from '../utils/formato'
+import { formatearMonedaExacta } from '../utils/formato'
+
+const apiExacta = crearCortesApiAxios(api)
 
 interface Servicio {
   id: number
   nombre: string
   descripcion: string
-  precio: number
+  /** String exacto del API ("100.00"); en fallback local se normaliza. */
+  precio: string
   duracion_minutos: number
 }
 
@@ -50,9 +57,10 @@ export default function RegistroCortes() {
 
   const cargarServicios = async () => {
     try {
-      const response = await api.get('/servicios/')
-      setServicios(response.data)
-      setSinServicios(response.data.length === 0)
+      // Camino exacto 002 (T83): precios como strings, sin conversor global.
+      const data = await apiExacta.get<Servicio[]>('/servicios/')
+      setServicios(data)
+      setSinServicios(data.length === 0)
     } catch (error) {
       console.error('Error cargando servicios, pruebo los locales:', error)
       // Fallback offline: servicios cacheados en IndexedDB.
@@ -60,25 +68,24 @@ export default function RegistroCortes() {
       // válidas (mismo patrón que el fix de `sincronizado` en useSync):
       // se filtra en memoria en vez de where('activo').equals(1).
       const locales = await db.servicios.filter((s) => s.activo).toArray()
-      setServicios(locales as Servicio[])
+      setServicios(locales.map((l) => ({ ...l, precio: String(l.precio) })))
       setSinServicios(locales.length === 0)
     }
   }
 
   const servicio = servicios.find((s) => s.id === servicioSeleccionado) ?? null
-  // Estimada exacta en centavos enteros (paquete 8, T50): sin `*100` float.
+  // Estimada exacta en centavos enteros (paquete 8, T50; T83 sin float).
   // Si el precio/porcentaje no son recuperables, no se muestra estimada.
   let gananciaCentavos: number | null = null
   if (servicio && usuario) {
     try {
-      const precioCentavos = pesosStrACentavos(servicio.precio.toFixed(2))
-      const porcentajeCentesimas = Math.round(usuario.porcentaje_ganancia * 100)
+      const precioCentavos = pesosStrACentavos(servicio.precio)
+      const porcentajeCentesimas = porcentajeACentesimas(usuario.porcentaje_ganancia)
       gananciaCentavos = estimarComisionCentavos(precioCentavos, porcentajeCentesimas)
     } catch {
       gananciaCentavos = null
     }
   }
-  const ganancia = gananciaCentavos === null ? 0 : gananciaCentavos / 100
   // Pendientes visibles de la cuenta actual (RF-29): sobrevive a recarga
   // porque la outbox es durable en IndexedDB.
   const pendientes = useLiveQuery(
@@ -116,7 +123,7 @@ export default function RegistroCortes() {
     // `completo` usa el precio MOSTRADO (snapshot), no un recálculo posterior.
     let cobroCentavos: number | null = null
     try {
-      const precioCentavos = pesosStrACentavos(servicio.precio.toFixed(2))
+      const precioCentavos = pesosStrACentavos(servicio.precio)
       if (cobro === 'parcial') {
         cobroCentavos = pesosStrACentavos(importeCobro.trim())
       } else if (cobro === 'completo') {
@@ -128,8 +135,8 @@ export default function RegistroCortes() {
       return
     }
     try {
-      const precioCentavos = pesosStrACentavos(servicio.precio.toFixed(2))
-      const porcentajeCentesimas = Math.round(usuario.porcentaje_ganancia * 100)
+      const precioCentavos = pesosStrACentavos(servicio.precio)
+      const porcentajeCentesimas = porcentajeACentesimas(usuario.porcentaje_ganancia)
       const operacion = crearOperacionCorte({
         actorId: usuario.id,
         servicioId: servicio.id,
@@ -322,7 +329,7 @@ export default function RegistroCortes() {
                     </span>
                   </span>
                   <span className="ui-tarjeta-seleccion__precio">
-                    {formatearMoneda(s.precio)}
+                    {formatearMonedaExacta(s.precio)}
                   </span>
                 </button>
               ))}
@@ -348,7 +355,7 @@ export default function RegistroCortes() {
                 Tu ganancia ({usuario?.porcentaje_ganancia}%)
               </span>
               <span className="registro__preview-valor cifra">
-                {gananciaCentavos === null ? '—' : formatearMoneda(ganancia)}
+                {gananciaCentavos === null ? '—' : formatearMonedaExacta(centavosAPesosStr(gananciaCentavos))}
               </span>
             </div>
           )}

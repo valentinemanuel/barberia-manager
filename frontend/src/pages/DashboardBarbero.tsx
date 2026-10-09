@@ -2,14 +2,17 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Scissors } from 'lucide-react'
 import api from '../services/api'
+import { crearCortesApiAxios } from '../services/cortesApi'
 import { useAuthStore } from '../store/authStore'
 import { Tarjeta, Cifra, SkeletonLineas } from '../components/ui'
-import { formatearMoneda, formatearEntero, formatearFecha, pluralizar } from '../utils/formato'
+import { formatearMonedaExacta, formatearEntero, formatearFecha, pluralizar } from '../utils/formato'
+
+const apiExacta = crearCortesApiAxios(api)
 
 interface Resumen {
   fecha?: string
   total_cortes: number
-  acumulado: number
+  acumulado: string
   porcentaje_asignado: number
 }
 
@@ -30,14 +33,15 @@ export default function DashboardBarbero() {
 
   const cargarResumenes = async () => {
     try {
+      // Camino exacto 002 (T83): acumulados como strings, sin conversor.
       const [rDia, rSemana, rMes] = await Promise.all([
-        api.get('/cortes/mi/resumen/dia'),
-        api.get('/cortes/mi/resumen/semana'),
-        api.get('/cortes/mi/resumen/mes'),
+        apiExacta.get<Resumen>('/cortes/mi/resumen/dia'),
+        apiExacta.get<Resumen>('/cortes/mi/resumen/semana'),
+        apiExacta.get<Resumen>('/cortes/mi/resumen/mes'),
       ])
-      setDia(rDia.data)
-      setSemana(rSemana.data)
-      setMes(rMes.data)
+      setDia(rDia)
+      setSemana(rSemana)
+      setMes(rMes)
     } catch (error) {
       console.error('Error cargando resúmenes:', error)
     } finally {
@@ -85,7 +89,7 @@ export default function DashboardBarbero() {
             <Cifra
               etiqueta="Hoy"
               valor={formatearEntero(dia?.total_cortes ?? 0)}
-              pie={`${pluralizar(dia?.total_cortes ?? 0, 'corte', 'cortes')} · ${formatearMoneda(dia?.acumulado ?? 0)} para vos`}
+              pie={`${pluralizar(dia?.total_cortes ?? 0, 'corte', 'cortes')} · ${formatearMonedaExacta(dia?.acumulado ?? '0.00')} para vos`}
               destacada
             />
           </Tarjeta>
@@ -94,7 +98,7 @@ export default function DashboardBarbero() {
             <Cifra
               etiqueta="Esta semana"
               valor={formatearEntero(semana?.total_cortes ?? 0)}
-              pie={`${pluralizar(semana?.total_cortes ?? 0, 'corte', 'cortes')} · ${formatearMoneda(semana?.acumulado ?? 0)} para vos`}
+              pie={`${pluralizar(semana?.total_cortes ?? 0, 'corte', 'cortes')} · ${formatearMonedaExacta(semana?.acumulado ?? '0.00')} para vos`}
               destacada
             />
           </Tarjeta>
@@ -103,7 +107,7 @@ export default function DashboardBarbero() {
             <Cifra
               etiqueta="Este mes"
               valor={formatearEntero(mes?.total_cortes ?? 0)}
-              pie={`${pluralizar(mes?.total_cortes ?? 0, 'corte', 'cortes')} · ${formatearMoneda(mes?.acumulado ?? 0)} para vos`}
+              pie={`${pluralizar(mes?.total_cortes ?? 0, 'corte', 'cortes')} · ${formatearMonedaExacta(mes?.acumulado ?? '0.00')} para vos`}
               destacada
             />
           </Tarjeta>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import api from '../services/api'
+import { crearCortesApiAxios } from '../services/cortesApi'
 import { mensajeError } from '../services/error'
 import { useAuthStore } from '../store/authStore'
 import { db } from '../services/db'
@@ -8,7 +9,9 @@ import {
   crearOperacionEdicion,
 } from '../services/operacionesCortes'
 import { Tarjeta, Vacio, SkeletonLineas, Segmentado, Boton } from '../components/ui'
-import { formatearMoneda, formatearFecha } from '../utils/formato'
+import { formatearMonedaExacta, formatearFecha } from '../utils/formato'
+
+const apiExacta = crearCortesApiAxios(api)
 import {
   motivosVisibles,
   resumenImputacion,
@@ -38,7 +41,7 @@ interface Justificante {
   uuid: string
   concepto: string
   tipo: string | null
-  importe: number | string
+  importe: string
   motivo: string | null
 }
 
@@ -61,20 +64,25 @@ export default function MisSaldos() {
 
   const cargar = async () => {
     try {
-      const historial = await api.get('/cortes/mi/historial')
-      const cortes: CortePropio[] = historial.data ?? []
+      // Camino exacto 002 (T83): saldos y movimientos como strings.
+      const historial = await apiExacta.get<CortePropio[]>('/cortes/mi/historial')
+      const cortes: CortePropio[] = historial ?? []
       const detalle = await Promise.all(
         cortes.map(async (corte) => {
           const [saldos, movimientos] = await Promise.all([
-            api.get(`/cortes/${corte.id}/saldos`).catch(() => ({ data: null })),
-            api.get(`/cortes/${corte.id}/movimientos`).catch(() => ({ data: [] })),
+            apiExacta.get(`/cortes/${corte.id}/saldos`).catch(() => null),
+            apiExacta.get<MovimientoVista[]>(`/cortes/${corte.id}/movimientos`).catch(() => []),
           ])
-          return { corte, saldos: saldos.data, movimientos: movimientos.data ?? [] }
+          return {
+            corte,
+            saldos: saldos as FilaCorte['saldos'],
+            movimientos: (movimientos ?? []) as MovimientoVista[],
+          }
         }),
       )
       setFilas(detalle)
-      const just = await api.get('/cortes/mi/justificantes').catch(() => ({ data: [] }))
-      setJustificantes(just.data ?? [])
+      const just = await apiExacta.get<Justificante[]>('/cortes/mi/justificantes').catch(() => [])
+      setJustificantes(just ?? [])
     } catch (e) {
       setError(mensajeError(e, 'No se pudieron cargar los saldos'))
     } finally {
@@ -220,11 +228,11 @@ export default function MisSaldos() {
                 <ul>
                   <li>
                     Deuda del cliente:{' '}
-                    {desconocidoCliente ? 'Sin información' : formatearMoneda(Number(saldos.cliente.restante))}
+                    {desconocidoCliente ? 'Sin información' : formatearMonedaExacta(String(saldos.cliente.restante))}
                   </li>
                   <li>
                     Mi comisión pendiente:{' '}
-                    {desconocidoComision ? 'Sin información' : formatearMoneda(Number(saldos.comision.restante))}
+                    {desconocidoComision ? 'Sin información' : formatearMonedaExacta(String(saldos.comision.restante))}
                   </li>
                   {excedenteCliente && <li>{excedenteCliente}</li>}
                   {excedenteComision && <li>Comisión: {excedenteComision}</li>}
@@ -281,7 +289,7 @@ export default function MisSaldos() {
             <ul>
               {justificantes.map((j) => (
                 <li key={j.uuid}>
-                  Corte #{j.corte_id}: {formatearMoneda(Number(j.importe))}
+                  Corte #{j.corte_id}: {formatearMonedaExacta(j.importe)}
                   {j.motivo ? ` — ${j.motivo}` : ''}
                 </li>
               ))}

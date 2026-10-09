@@ -44,3 +44,51 @@ export function crearCortesApi(http: {
     patch: (url, cuerpo) => envolver(http.patch)(url, cuerpo),
   };
 }
+
+/**
+ * Porcentaje (0–100, ≤2 decimales) a centésimas de punto (T83).
+ * El JSON ya trae el double más cercano; para este rango acotado
+ * `Math.round(x*100)` es exacto (error binario ~1e-12 « 0.5) y valida
+ * rango. Falla en voz alta fuera de 0–100, nunca normaliza en silencio.
+ */
+export function porcentajeACentesimas(porcentaje: number): number {
+  if (typeof porcentaje !== 'number' || !Number.isFinite(porcentaje)) {
+    throw new Error('El porcentaje debe ser un número finito');
+  }
+  if (porcentaje < 0 || porcentaje > 100) {
+    throw new Error('El porcentaje debe estar entre 0 y 100');
+  }
+  return Math.round(porcentaje * 100);
+}
+
+/**
+ * Centavos desde un número de catálogo local (T83): `String(n)` da la
+ * representación más corta que redondea al mismo double, exacta para
+ * precios con ≤2 decimales; si no parsea, falla en voz alta.
+ */
+export function numeroCatalogoACentavos(valor: number): number {
+  return pesosStrACentavos(String(valor));
+}
+
+const CRUDO = {
+  // Reemplaza el transform por defecto: la respuesta llega como texto y
+  // `X-Exacto` salta además el conversor global de `api.ts`.
+  transformResponse: [(datos: string) => datos],
+  headers: { 'X-Exacto': '1' },
+};
+
+/** Instancia lista contra `/api` con strings exactos (pantallas 002). */
+export function crearCortesApiAxios(instancia: unknown): CortesApi {
+  const ax = instancia as {
+    get: (url: string, config?: Record<string, unknown>) => Promise<{ data: unknown }>;
+    post: (url: string, cuerpo?: unknown, config?: Record<string, unknown>) => Promise<{ data: unknown }>;
+    patch: (url: string, cuerpo?: unknown, config?: Record<string, unknown>) => Promise<{ data: unknown }>;
+  };
+  const texto = (valor: unknown): string =>
+    typeof valor === 'string' ? valor : JSON.stringify(valor);
+  return crearCortesApi({
+    get: (url) => ax.get(url, CRUDO).then((r) => ({ data: texto(r.data) })),
+    post: (url, cuerpo) => ax.post(url, cuerpo, CRUDO).then((r) => ({ data: texto(r.data) })),
+    patch: (url, cuerpo) => ax.patch(url, cuerpo, CRUDO).then((r) => ({ data: texto(r.data) })),
+  });
+}

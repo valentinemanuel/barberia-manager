@@ -22,6 +22,11 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (response) => {
+    // Camino exacto 002 (paquete 12, T83): con `X-Exacto` se omiten las
+    // conversiones y los decimales viajan como strings ("12.50" intacto).
+    if (response.config?.headers?.['X-Exacto']) {
+      return response
+    }
     // Los Decimal de Pydantic llegan como strings ("12.50"); convertirlos a
     // número para que .toFixed() funcione y React no truene (pantalla en blanco)
     if (response.data && typeof response.data === 'object') {

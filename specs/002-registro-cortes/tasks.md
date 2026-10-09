@@ -1069,7 +1069,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - Implementar: fetch typed para 002 + sobrecarga `formatearMoneda(string)`; `api.ts` intacto.
   - Hecho cuando: tests node + build en verde y ningún string monetario pasa por float en el camino nuevo.
 
-- [ ] **T83. Pantallas 002 sin float.** RF-7/RF-12 (parciales), RNF-1.
+- [x] **T83. Pantallas 002 sin float.** RF-7/RF-12 (parciales), RNF-1.
   - Dependencias: T82.
   - Tests primero: `RegistroCortes` (estimada y cobro en centavos/centésimas puros, sin `toFixed/Math.round/*100`), `MisSaldos` y `DashboardBarbero` (display desde strings, `Number()` solo conteos); build en verde.
   - Hecho cuando: grep sin `parseFloat/toFixed(*100)/Math.round(*100)` en pantallas 002 y build en verde.
@@ -1112,7 +1112,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 | Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
 |---|---|---|---|
 | T82 | Rojo real: `ROJO T82` (exit 1) + harness (nodenext/extensión/import + firma fábrica) | Verde: `VERDE T82` + `npm run build` OK (exit 0) | Solo frontend: `cortesApi.ts` (nuevo, parseo exacto + codec reexportado, http inyectado) + `formato.ts` (`formatearMonedaExacta` por dígitos; `formatearMoneda(number)` intacto) + `scripts/t82-test.mjs`. `api.ts` intacto. |
-| T83 |  |  |  |
+| T83 | Rojo real: 8 puentes (toFixed redondeo, Math.round, Number, display) | Verde: `VERDE T83` + T82 + `npm run build` OK (exit 0) | Solo frontend + opt-out aditivo en `api.ts` (`X-Exacto`, default intacto): 3 páginas por `apiExacta` (strings), estimada/cobro en centavos, display con `formatearMonedaExacta`, `porcentajeACentesimas`/`numeroCatalogoACentavos` documentados. DB intacta. |
 | T84 |  |  |  |
 | T85 |  |  |  |
 | T86 |  |  |  |
