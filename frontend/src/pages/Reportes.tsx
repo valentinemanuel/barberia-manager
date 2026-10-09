@@ -9,16 +9,19 @@ import {
   SkeletonLineas,
   useToast,
 } from '../components/ui'
-import { formatearMoneda, formatearEntero, formatearFecha } from '../utils/formato'
+import { formatearMonedaExacta, formatearEntero, formatearFecha } from '../utils/formato'
+import { crearCortesApiAxios } from '../services/cortesApi'
+
+const apiExacta = crearCortesApiAxios(api)
 
 interface ReporteDia {
   fecha: string
-  total_cortes: number
-  total_productos: number
-  total_consumibles: number
-  total_ingresos: number
-  total_gastos: number
-  ganancia_neta: number
+  total_cortes: string
+  total_productos: string
+  total_consumibles: string
+  total_ingresos: string
+  total_gastos: string
+  ganancia_neta: string
   cantidad_cortes: number
 }
 
@@ -35,8 +38,8 @@ export default function Reportes() {
   const cargarReporte = async () => {
     setCargando(true)
     try {
-      const response = await api.get(`/reportes/dia/${fecha}`)
-      setReporte(response.data)
+      // Camino exacto (T84): montos como strings, sin conversor global.
+      setReporte(await apiExacta.get<ReporteDia>(`/reportes/dia/${fecha}`))
     } catch (error) {
       console.error('Error cargando reporte:', error)
       mostrar('error', 'No se pudo cargar el reporte de ese día')
@@ -121,20 +124,20 @@ export default function Reportes() {
               <div className="pagina">
                 <Cifra
                   etiqueta={`Cortes (${formatearEntero(reporte.cantidad_cortes)})`}
-                  valor={formatearMoneda(reporte.total_cortes)}
+                  valor={formatearMonedaExacta(reporte.total_cortes)}
                 />
                 <Cifra
                   etiqueta="Productos"
-                  valor={formatearMoneda(reporte.total_productos)}
+                  valor={formatearMonedaExacta(reporte.total_productos)}
                 />
                 <Cifra
                   etiqueta="Consumibles"
-                  valor={formatearMoneda(reporte.total_consumibles)}
+                  valor={formatearMonedaExacta(reporte.total_consumibles)}
                 />
                 <div style={{ paddingTop: 'var(--sp-3)', borderTop: '1px solid var(--borde)' }}>
                   <Cifra
                     etiqueta="Total ingresos"
-                    valor={formatearMoneda(reporte.total_ingresos)}
+                    valor={formatearMonedaExacta(reporte.total_ingresos)}
                     destacada
                   />
                 </div>
@@ -145,13 +148,13 @@ export default function Reportes() {
               <div className="pagina">
                 <Cifra
                   etiqueta="Total gastos"
-                  valor={formatearMoneda(reporte.total_gastos)}
+                  valor={formatearMonedaExacta(reporte.total_gastos)}
                   className="texto-peligro"
                 />
                 <div style={{ paddingTop: 'var(--sp-3)', borderTop: '1px solid var(--borde)' }}>
                   <Cifra
                     etiqueta="Ganancia neta"
-                    valor={formatearMoneda(reporte.ganancia_neta)}
+                    valor={formatearMonedaExacta(reporte.ganancia_neta)}
                     pie="ingresos menos gastos del día"
                     destacada
                   />
@@ -161,7 +164,7 @@ export default function Reportes() {
           </div>
         )}
 
-        {!cargando && reporte && reporte.total_ingresos === 0 && (
+        {!cargando && reporte && reporte.total_ingresos === '0.00' && (
           <p className="texto-suave texto-centrado">
             <CalendarDays
               size={16}

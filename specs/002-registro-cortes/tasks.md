@@ -1074,7 +1074,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - Tests primero: `RegistroCortes` (estimada y cobro en centavos/centésimas puros, sin `toFixed/Math.round/*100`), `MisSaldos` y `DashboardBarbero` (display desde strings, `Number()` solo conteos); build en verde.
   - Hecho cuando: grep sin `parseFloat/toFixed(*100)/Math.round(*100)` en pantallas 002 y build en verde.
 
-- [ ] **T84. Resto de la app sin float.** RNF-1/RNF-4.
+- [x] **T84. Resto de la app sin float.** RNF-1/RNF-4.
   - Dependencias: T82.
   - Tests primero: formularios y caja sin `Number(e.target.value)` monetario (codec de frontera), build en verde; locale y diseño intactos.
   - Hecho cuando: ningún input monetario de la app convierte por float y build en verde.
@@ -1113,7 +1113,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 |---|---|---|---|
 | T82 | Rojo real: `ROJO T82` (exit 1) + harness (nodenext/extensión/import + firma fábrica) | Verde: `VERDE T82` + `npm run build` OK (exit 0) | Solo frontend: `cortesApi.ts` (nuevo, parseo exacto + codec reexportado, http inyectado) + `formato.ts` (`formatearMonedaExacta` por dígitos; `formatearMoneda(number)` intacto) + `scripts/t82-test.mjs`. `api.ts` intacto. |
 | T83 | Rojo real: 8 puentes (toFixed redondeo, Math.round, Number, display) | Verde: `VERDE T83` + T82 + `npm run build` OK (exit 0) | Solo frontend + opt-out aditivo en `api.ts` (`X-Exacto`, default intacto): 3 páginas por `apiExacta` (strings), estimada/cobro en centavos, display con `formatearMonedaExacta`, `porcentajeACentesimas`/`numeroCatalogoACentavos` documentados. DB intacta. |
-| T84 |  |  |  |
+| T84 | Rojo real: 9 puentes (3 inputs + 3 displays + duplicado de interfaz) | Verde: `VERDE T84` + T82/T83 + `npm run build` OK (exit 0) | Solo frontend: `cortesApi.ts` (`validarPorcentajeStr`) + Gestion* (precio/porcentaje como strings validados, display exacto; conteos enteros intactos) + Reportes (vía exacta + interfaz única). Incidente honesto: script con `≤` truncó GestionUsuarios (consola Windows); restaurado por git y rehecho con ediciones. Locale/diseño intactos. |
 | T85 |  |  |  |
 | T86 |  |  |  |
 | T87 |  |  |  |

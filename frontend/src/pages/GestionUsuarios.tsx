@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Users, Plus } from 'lucide-react'
 import api from '../services/api'
+import { validarPorcentajeStr } from '../services/cortesApi'
 import { mensajeError } from '../services/error'
 import {
   Boton,
@@ -31,7 +32,17 @@ const formularioVacio = {
   usuario: '',
   password: '',
   rol: 'barbero' as 'admin' | 'barbero',
-  porcentaje_ganancia: 0,
+  porcentaje_ganancia: '',
+}
+
+/** Porcentaje del formulario valido (0 a 100, 2 decimales maximo). */
+function porcentajeValido(valor: string): boolean {
+  try {
+    validarPorcentajeStr(valor.trim())
+    return true
+  } catch {
+    return false
+  }
 }
 
 export default function GestionUsuarios() {
@@ -71,7 +82,7 @@ export default function GestionUsuarios() {
             usuario: usuario.usuario,
             password: '',
             rol: usuario.rol,
-            porcentaje_ganancia: usuario.porcentaje_ganancia,
+            porcentaje_ganancia: String(usuario.porcentaje_ganancia),
           }
         : formularioVacio
     )
@@ -112,6 +123,7 @@ export default function GestionUsuarios() {
     formulario.nombre.trim() &&
     formulario.apellido.trim() &&
     formulario.usuario.trim() &&
+    porcentajeValido(formulario.porcentaje_ganancia) &&
     (usuarioEditando || formulario.password)
 
   return (
@@ -292,7 +304,7 @@ export default function GestionUsuarios() {
                 onChange={(e) =>
                   setFormulario({
                     ...formulario,
-                    porcentaje_ganancia: Number(e.target.value),
+                    porcentaje_ganancia: e.target.value,
                   })
                 }
               />

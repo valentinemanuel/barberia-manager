@@ -62,6 +62,26 @@ export function porcentajeACentesimas(porcentaje: number): number {
 }
 
 /**
+ * Porcentaje en string ("50.25") a centésimas (5025), por dígitos.
+ * Rango 0–100 inclusive; falla en voz alta, nunca normaliza.
+ */
+export function validarPorcentajeStr(valor: string): number {
+  const limpio = valor.trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(limpio)) {
+    throw new Error('El porcentaje debe tener como máximo dos decimales');
+  }
+  let centesimas = 0;
+  const [enteros, dec = ''] = limpio.split('.');
+  for (const ch of enteros + (dec + '00').slice(0, 2)) {
+    centesimas = centesimas * 10 + (ch.charCodeAt(0) - 48);
+  }
+  if (centesimas < 0 || centesimas > 10000) {
+    throw new Error('El porcentaje debe estar entre 0 y 100');
+  }
+  return centesimas;
+}
+
+/**
  * Centavos desde un número de catálogo local (T83): `String(n)` da la
  * representación más corta que redondea al mismo double, exacta para
  * precios con ≤2 decimales; si no parsea, falla en voz alta.

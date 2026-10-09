@@ -11,7 +11,8 @@ import {
   SkeletonLineas,
   useToast,
 } from '../components/ui'
-import { formatearMoneda } from '../utils/formato'
+import { formatearMonedaExacta } from '../utils/formato'
+import { pesosStrACentavos } from '../services/cortesApi'
 
 interface Servicio {
   id: number
@@ -25,8 +26,17 @@ interface Servicio {
 const formularioVacio = {
   nombre: '',
   descripcion: '',
-  precio: 0,
+  precio: '',
   duracion_minutos: 30,
+}
+
+/** Precio del formulario v�lido y positivo, o false (falla en voz alta al guardar). */
+function precioValido(precio: string): boolean {
+  try {
+    return pesosStrACentavos(precio.trim()) > 0
+  } catch {
+    return false
+  }
 }
 
 export default function GestionServicios() {
@@ -65,7 +75,7 @@ export default function GestionServicios() {
         ? {
             nombre: servicio.nombre,
             descripcion: servicio.descripcion || '',
-            precio: servicio.precio,
+            precio: String(servicio.precio),
             duracion_minutos: servicio.duracion_minutos,
           }
         : formularioVacio
@@ -154,7 +164,7 @@ export default function GestionServicios() {
               >
                 <p className="texto-suave texto-pequeno">{servicio.descripcion}</p>
                 <p className="ui-cifra__valor cifra" style={{ marginTop: 'var(--sp-3)' }}>
-                  {formatearMoneda(servicio.precio)}
+                  {formatearMonedaExacta(String(servicio.precio))}
                 </p>
                 <p className="texto-suave texto-pequeno">
                   {servicio.duracion_minutos} minutos
@@ -171,7 +181,7 @@ export default function GestionServicios() {
         titulo={servicioEditando ? 'Editar servicio' : 'Nuevo servicio'}
         onConfirmar={guardar}
         cargando={guardando}
-        confirmarDeshabilitado={!formulario.nombre.trim() || formulario.precio <= 0}
+        confirmarDeshabilitado={!formulario.nombre.trim() || !precioValido(formulario.precio)}
       >
         <div className="pagina">
           <Campo etiqueta="Nombre" id="servicio-nombre">
@@ -197,7 +207,7 @@ export default function GestionServicios() {
             <Campo
               etiqueta="Precio"
               id="servicio-precio"
-              error={precioTocado && formulario.precio <= 0 ? 'Debe ser mayor a 0' : undefined}
+              error={precioTocado && !precioValido(formulario.precio) ? 'Debe ser mayor a 0' : undefined}
             >
               <input
                 id="servicio-precio"
@@ -206,7 +216,7 @@ export default function GestionServicios() {
                 min="0"
                 className="ui-campo__control"
                 value={formulario.precio}
-                onChange={(e) => setFormulario({ ...formulario, precio: Number(e.target.value) })}
+                onChange={(e) => setFormulario({ ...formulario, precio: e.target.value })}
                 onBlur={() => setPrecioTocado(true)}
               />
             </Campo>
