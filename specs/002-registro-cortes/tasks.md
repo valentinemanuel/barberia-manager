@@ -995,7 +995,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - Implementar: endpoints nuevos versionados con límites explícitos (semana cerrada Lun–Dom, mes calendario, total acotado).
   - Hecho cuando: tests en verde y ningún acumulado incompleto se presenta como definitivo.
 
-- [ ] **T79. UI caja admin.** RNF-4.
+- [x] **T79. UI caja admin.** RNF-4.
   - Dependencias: T74–T78.
   - Tests primero (node, patrón T50–T72): `cajaVista.ts` (estados jornada, devengado vs caja, pendientes con acción); `npm run build` en verde.
   - Implementar: `CierreCaja.tsx` con apertura/cierre/pendientes/resumen nuevo (sin `parseFloat` nuevo); legacy del formulario snapshot retirado del flujo (endpoint viejo intacto).
@@ -1022,6 +1022,6 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 | T76 | Rojo real: cuádruple failed (sin pertenencia/vínculo/momento); 2 ajustes honestos en tests (corte dentro de la jornada vía retroactivo admin; campo legacy faltante) | Verde: `106 passed` (2 archivos) + `012` en TEMP (vacía/guard/repetir) | Divulgación: `barberia.db` ganó tabla vacía `ajustes_cierre` por `create_all` (0 filas; baseline `8ca1788e…`). `jornada_caja.py` (`es_tardio` + `AjusteCierre`) + `012` + `jornada_service` (incorporar al cerrar, tardío por ajuste, `corte_en_cierre`) + `corte_bloqueado` con pertenencia verificada + momento en sync v2 (con hash; sin journals viejos con UUID en producción). Legacy-fecha no bloquea por construcción. |
 | T77 | Rojo real: doble failed (404 sin resumen + sin ajuste); legacy intacto en verde | Verde: `109 passed` (2 archivos) | DB estable; `jornadas.py` (GET resumen: devengado por snapshot si cerrada / vivo si abierta, cobros/pagos netos por imputación destino + métodos, ajustes/desconocidos/pendientes aparte) + `jornada_service` (`ajuste_por_correccion`) + hooks PATCH/anular (solo con pertenencia). Cierre original nunca muta; `total_cortes` legacy intacto. |
 | T78 | Rojo real: doble 404 (sin endpoint); corrección honesta al paso (revisiones por ventana, no globales) | Verde: `112 passed` (2 archivos) | DB estable; `jornadas.py` (GET acumulados día/semana-Lun–Dom/mes/total acotado: comisiones por servicio, dinero por saldos, revisión/excedentes/desconocidos aparte) + tests. Resúmenes viejos intactos; estimada de sync sigue solo-dispositivo (sin pull). |
-| T79 |  |  |  |
+| T79 | Rojo real: `ROJO T79: falta src/services/cajaVista.ts` (exit 1); función enredada simplificada antes del verde | Verde: `VERDE T79` + `npm run build` OK (exit 0) | Solo frontend: `cajaVista.ts` (puro, sin float) + `scripts/t79-test.mjs` + `CierreCaja.tsx` reescrita (apertura/cierre/pendientes/resumen nuevo, 0 `parseFloat`; formulario snapshot legacy fuera de la pantalla, endpoint intacto). Sin `any`. |
 | T80 |  |  |  |
 | T81 |  |  |  |
