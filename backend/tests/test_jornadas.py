@@ -463,3 +463,39 @@ def test_acumulados_resumenes_viejos_intactos(client):
     db.close()
     token = _token(client, "barb_j78c")
     assert client.get("/api/cortes/mi/resumen/dia", headers=_headers(token)).status_code == 200
+
+
+def test_resumen_cerrada_usa_snapshot_congelado(client):
+    """T77 (RF-39/45, agregado en revisión): cerrada responde con el snapshot.
+
+    La corrección posterior genera ajuste sin mutar el devengado original.
+    """
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_j77d", Rol.ADMIN)
+    servicio_id = _servicio_y_usuarios(db, "barb_j77d")
+    db.close()
+    auth_admin = _headers(_token(client, "admin_j77d"))
+    hoy = _abrir_hoy(client, _token(client, "admin_j77d"))
+    token = _token(client, "barb_j77d")
+    corte_id = _corte_simple(client, token, servicio_id)
+    assert client.post("/api/jornadas/cerrar", headers=auth_admin, json={"fecha": hoy}).status_code == 200
+    data = client.get(f"/api/jornadas/resumen?fecha={hoy}", headers=auth_admin).json()
+    assert data["estado"] == "cerrada"
+    assert data["devengado"] == {"cortes": 1, "total": "100.00"}
+    assert data["ajustes"] == 0
+    assert client.patch(f"/api/cortes/{corte_id}", json={"metodo_pago": "tarjeta", "motivo": "rev"},
+                        headers=auth_admin).status_code == 200
+    data2 = client.get(f"/api/jornadas/resumen?fecha={hoy}", headers=auth_admin).json()
+    assert data2["devengado"] == {"cortes": 1, "total": "100.00"}
+    assert data2["ajustes"] == 1
+
+
+def test_jornadas_lecturas_solo_admin(client):
+    """T74/T77 (RF-15, agregado en revisión): barbero recibe 403 en listado/resumen/acumulados."""
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barb_j77e", Rol.BARBERO)
+    db.close()
+    auth = _headers(_token(client, "barb_j77e"))
+    assert client.get("/api/jornadas", headers=auth).status_code == 403
+    assert client.get("/api/jornadas/resumen?fecha=2026-10-08", headers=auth).status_code == 403
+    assert client.get("/api/jornadas/acumulados?periodo=dia&fecha=2026-10-08", headers=auth).status_code == 403
