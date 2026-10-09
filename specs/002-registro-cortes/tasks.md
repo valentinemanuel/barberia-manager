@@ -971,7 +971,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - Implementar: `models/jornada_caja.py` + `010` (CREATE con guard) + `services/jornada_service.py` + `POST /api/jornadas/abrir|cerrar` solo admin.
   - Hecho cuando: TEMP + tests en verde y ninguna apertura automática existe en el código.
 
-- [ ] **T75. Imputación al aceptar.** RF-45/RF-50 (parciales).
+- [x] **T75. Imputación al aceptar.** RF-45/RF-50 (parciales).
   - Dependencias: T74.
   - Tests primero: abono con jornada real abierta → `imputado` allí; real cerrada + abierta actual → ajuste a la actual con referencia; sin abierta → `pendiente` + pide apertura (saldo igual se mueve); `history` con `011`.
   - Implementar: `models/imputacion_corte.py` + `011` + regla en `jornada_service` + hook en `registrar_abono`/sync (misma UoW, sin commit).
@@ -1018,7 +1018,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 | Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
 |---|---|---|---|
 | T74 | Rojo real: cuádruple failed (404 sin router/modelo) + `ZoneInfoNotFoundError` en Windows | Verde: `27 passed` (2 archivos) + `010` en TEMP (vacía/guard/repetir) | Divulgación: `barberia.db` ganó tablas vacías `jornadas_caja` + `pertenencias_cierre` por `create_all` (0 filas, legacy intacto; baseline `8c5a43be…`). `jornada_caja.py` + `010` + `jornada_service.py` (fecha_negocio pura, abrir/cerrar con 409, sin apertura automática) + `jornadas.py` (solo admin 403) + `main.py` (registro) + `requirements.txt` (`tzdata`, solo datos de zona). |
-| T75 |  |  |  |
+| T75 | Rojo real: cuádruple failed (sin modelo/regla/hook) | Verde: `102 passed` (2 archivos) + `011` en TEMP (vacía/guard/repetir) | Divulgación: `barberia.db` ganó tabla vacía `imputaciones_movimiento` por `create_all` (0 filas; baseline `86e6ea41…`). `imputacion_corte.py` + `011` + `jornada_service` (real abierta → allí; cerrada + abierta actual → ajuste; sin abierta → pendiente; una sola abierta) + hook en abono/compensación/devolución/resolución + `imputacion` en respuesta. Saldos intactos (pendiente igual mueve saldo). |
 | T76 |  |  |  |
 | T77 |  |  |  |
 | T78 |  |  |  |

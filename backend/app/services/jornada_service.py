@@ -36,6 +36,11 @@ def abrir_jornada(db: Session, *, admin: Usuario, fecha: date) -> JornadaCaja:
     )
     if existente is not None:
         raise JornadaExistente("La jornada ya existe")
+    otra = (
+        db.query(JornadaCaja).filter(JornadaCaja.estado == EstadoJornada.ABIERTA).first()
+    )
+    if otra is not None:
+        raise JornadaExistente("Ya hay una jornada abierta")
     fila = JornadaCaja(
         fecha_negocio=fecha,
         estado=EstadoJornada.ABIERTA,
@@ -69,4 +74,55 @@ def jornada_abierta(db: Session, *, fecha: date) -> JornadaCaja | None:
     )
     if fila is None or fila.estado != EstadoJornada.ABIERTA:
         return None
+    return fila
+
+
+def jornada_abierta_actual(db: Session) -> JornadaCaja | None:
+    """La jornada abierta actual (a lo sumo una), o None."""
+    return (
+        db.query(JornadaCaja)
+        .filter(JornadaCaja.estado == EstadoJornada.ABIERTA)
+        .order_by(JornadaCaja.fecha_negocio.desc())
+        .first()
+    )
+
+
+def imputar_movimiento(
+    db: Session, *, movimiento_uuid: str, momento: datetime
+) -> "ImputacionMovimiento":
+    """Destino contable de un movimiento aceptado (paquete 11, RF-45/50).
+
+    Real abierta → imputa allí; real cerrada/inexistente + abierta actual
+    → ajuste a la actual con referencia; sin abierta → pendiente (mantiene
+    saldo, pide apertura). Idempotente por UUID. Sin commit.
+    """
+    from app.models.imputacion_corte import EstadoImputacion, ImputacionMovimiento
+
+    existente = (
+        db.query(ImputacionMovimiento)
+        .filter(ImputacionMovimiento.movimiento_uuid == movimiento_uuid)
+        .first()
+    )
+    if existente is not None:
+        return existente
+    real = fecha_negocio(momento)
+    destino = jornada_abierta(db, fecha=real)
+    if destino is None:
+        destino = jornada_abierta_actual(db)
+    if destino is None:
+        fila = ImputacionMovimiento(
+            movimiento_uuid=movimiento_uuid,
+            jornada_real=real,
+            jornada_destino_id=None,
+            estado=EstadoImputacion.PENDIENTE,
+        )
+    else:
+        fila = ImputacionMovimiento(
+            movimiento_uuid=movimiento_uuid,
+            jornada_real=real,
+            jornada_destino_id=destino.id,
+            estado=EstadoImputacion.IMPUTADO,
+        )
+    db.add(fila)
+    db.flush()
     return fila

@@ -91,6 +91,7 @@ def registrar_abono(
     )
     db.add(movimiento)
     db.flush()
+    _imputar_aceptado(db, movimiento)
     return movimiento
 
 
@@ -256,6 +257,7 @@ def resolver_revision(
         movimiento.estado = EstadoMovimiento.ACEPTADO
         movimiento.motivo = motivo.strip()
         db.flush()
+        _imputar_aceptado(db, movimiento)
         return movimiento
     if veredicto != "erroneo":
         raise ValueError("El veredicto debe ser real o erroneo")
@@ -287,7 +289,23 @@ def resolver_revision(
     )
     db.add(compensatoria)
     db.flush()
+    _imputar_aceptado(db, compensatoria)
     return compensatoria
+
+
+def _imputar_aceptado(db: Session, movimiento: MovimientoCorte) -> None:
+    """Imputa el movimiento si quedó aceptado (paquete 11, T75, RF-45/50).
+
+    Las revisiones no tienen dinero reconocido: se imputan al resolverse.
+    """
+    from app.services.jornada_service import imputar_movimiento
+
+    if movimiento.estado != EstadoMovimiento.ACEPTADO:
+        return
+    momento = movimiento.momento_real or movimiento.registrado_en
+    if momento is None:
+        momento = datetime.utcnow()
+    imputar_movimiento(db, movimiento_uuid=movimiento.uuid, momento=momento)
 
 
 def _validar_importe_compensacion(importe: Decimal) -> Decimal:
@@ -359,6 +377,7 @@ def registrar_compensacion(
     )
     db.add(fila)
     db.flush()
+    _imputar_aceptado(db, fila)
     return fila
 
 
@@ -419,4 +438,5 @@ def registrar_devolucion(
     )
     db.add(fila)
     db.flush()
+    _imputar_aceptado(db, fila)
     return fila
