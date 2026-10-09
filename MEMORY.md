@@ -167,6 +167,9 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 - Cambios ajenos de otra sesión (MCP SQLite en AGENTS/MEMORY/mcp/plantilla) preservados sin commitear.
 - No autoriza paquete 12 ni declara la spec implementada.
 
+## Spec 002 — paquete 12 redactado (2026-10-09)
+- `tasks.md` con T82–T89 en rama `feat/spec-002-paquete-12-cierre-integral`: typed core, pantallas 002, resto app, imputar al abrir, idempotencia dura, UoW + fix 008, E2E integral, cierre + spec hija 003. Decisiones: pull diferido, typed toda app, imputar incluido, deudas duras a intentar (bóveda a hija), E2E incluido. Ajenos MCP SQLite a salvo en `backup/ajenos-mcp-sqlite-2026-10-09` (+TEMP). Implementación pendiente de aprobación.
+
 ## Recuperación documental (2026-10-05)
 - Recuperado el contenido útil de `b211ee5` en una rama nueva desde `dev`, sin cherry-pick ni reescritura de la rama histórica `feat/mcp-config-y-offline`.
 - Conservados el estado y los pendientes actuales; no se recupera la afirmación antigua de que todos los tests están completos.
