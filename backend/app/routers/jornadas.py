@@ -77,6 +77,32 @@ def listar(
     return db.query(JornadaCaja).order_by(JornadaCaja.fecha_negocio).all()
 
 
+class ImputadasResponse(BaseModel):
+    fecha_negocio: date
+    imputadas: int
+
+
+@router.post("/{fecha}/imputaciones", response_model=ImputadasResponse)
+def imputar(
+    fecha: date,
+    db: Session = Depends(get_db),
+    admin: Usuario = Depends(requerir_admin),
+):
+    """Imputa pendientes con real en esta jornada (solo admin, RF-50).
+
+    Idempotente: replay no duplica (0 la segunda vez). No auto-aplica
+    nada más: revisiones y otras jornadas quedan intactas.
+    """
+    from app.services.jornada_service import imputar_pendientes
+
+    jornada = db.query(JornadaCaja).filter(JornadaCaja.fecha_negocio == fecha).first()
+    if jornada is None:
+        raise HTTPException(status_code=404, detail="Jornada no registrada")
+    n = imputar_pendientes(db, jornada=jornada)
+    db.commit()
+    return ImputadasResponse(fecha_negocio=fecha, imputadas=n)
+
+
 class ResumenCaja(BaseModel):
     fecha: date
     estado: EstadoJornada

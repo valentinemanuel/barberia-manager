@@ -1079,7 +1079,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - Tests primero: formularios y caja sin `Number(e.target.value)` monetario (codec de frontera), build en verde; locale y diseño intactos.
   - Hecho cuando: ningún input monetario de la app convierte por float y build en verde.
 
-- [ ] **T85. Imputar pendientes al abrir.** RF-50 (cierre), RNF-6.
+- [x] **T85. Imputar pendientes al abrir.** RF-50 (cierre), RNF-6.
   - Dependencias: ninguna (backend puro).
   - Tests primero: pendientes con real en la jornada que se abre → `IMPUTADA` con destino (idempotente, replay no duplica); sin real en ella → siguen pendientes; barbero → 403.
   - Implementar: `POST /api/jornadas/{id}/imputaciones` solo admin (misma UoW, sin auto-aplicar nada más).
@@ -1114,7 +1114,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 | T82 | Rojo real: `ROJO T82` (exit 1) + harness (nodenext/extensión/import + firma fábrica) | Verde: `VERDE T82` + `npm run build` OK (exit 0) | Solo frontend: `cortesApi.ts` (nuevo, parseo exacto + codec reexportado, http inyectado) + `formato.ts` (`formatearMonedaExacta` por dígitos; `formatearMoneda(number)` intacto) + `scripts/t82-test.mjs`. `api.ts` intacto. |
 | T83 | Rojo real: 8 puentes (toFixed redondeo, Math.round, Number, display) | Verde: `VERDE T83` + T82 + `npm run build` OK (exit 0) | Solo frontend + opt-out aditivo en `api.ts` (`X-Exacto`, default intacto): 3 páginas por `apiExacta` (strings), estimada/cobro en centavos, display con `formatearMonedaExacta`, `porcentajeACentesimas`/`numeroCatalogoACentavos` documentados. DB intacta. |
 | T84 | Rojo real: 9 puentes (3 inputs + 3 displays + duplicado de interfaz) | Verde: `VERDE T84` + T82/T83 + `npm run build` OK (exit 0) | Solo frontend: `cortesApi.ts` (`validarPorcentajeStr`) + Gestion* (precio/porcentaje como strings validados, display exacto; conteos enteros intactos) + Reportes (vía exacta + interfaz única). Incidente honesto: script con `≤` truncó GestionUsuarios (consola Windows); restaurado por git y rehecho con ediciones. Locale/diseño intactos. |
-| T85 |  |  |  |
+| T85 | Rojo real: doble 404 (sin endpoint) | Verde: `116 passed` (2 archivos) | DB estable; `jornada_service.py` (`imputar_pendientes` idempotente por estado) + `jornadas.py` (POST solo admin 403/404) + tests (imputa, replay 0, solo su jornada, 403). Sin auto-aplicar nada más. |
 | T86 |  |  |  |
 | T87 |  |  |  |
 | T88 |  |  |  |

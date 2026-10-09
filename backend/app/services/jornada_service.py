@@ -273,3 +273,26 @@ def ajuste_por_correccion(
         motivo=motivo,
     ))
     db.flush()
+
+
+def imputar_pendientes(db: Session, *, jornada: JornadaCaja) -> int:
+    """Imputa pendientes con real en esta jornada (paquete 12, RF-50, T85).
+
+    Idempotente: las ya imputadas se saltan; replay devuelve 0. Las de
+    otra jornada siguen pendientes. Sin commit.
+    """
+    from app.models.imputacion_corte import EstadoImputacion, ImputacionMovimiento
+
+    filas = (
+        db.query(ImputacionMovimiento)
+        .filter(
+            ImputacionMovimiento.jornada_real == jornada.fecha_negocio,
+            ImputacionMovimiento.estado == EstadoImputacion.PENDIENTE,
+        )
+        .all()
+    )
+    for fila in filas:
+        fila.estado = EstadoImputacion.IMPUTADO
+        fila.jornada_destino_id = jornada.id
+    db.flush()
+    return len(filas)
