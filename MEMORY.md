@@ -171,3 +171,10 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 - Recuperado el contenido útil de `b211ee5` en una rama nueva desde `dev`, sin cherry-pick ni reescritura de la rama histórica `feat/mcp-config-y-offline`.
 - Conservados el estado y los pendientes actuales; no se recupera la afirmación antigua de que todos los tests están completos.
 - Plantilla MCP adaptada a la documentación de OpenCode V2 (`mcp.servers`, `disabled`, credenciales por entorno). La configuración local existente no se modifica. La conexión de los servidores de la plantilla queda por verificar en cada entorno.
+
+## MCP SQLite corregido y verificado (2026-10-09)
+- El servidor `sqlite` fallaba al iniciar con dos errores según el pin: `ImportError: cannot import name 'eval_type_backport'` (con `mcp==1.2.0` y sin pin, porque `uvx` resuelve `pydantic` 2.14) y `AttributeError: 'Server' object has no attribute 'list_resources'` (con el `mcp` más nuevo, ≥1.16).
+- Causa: `mcp-server-sqlite` 2025.4.25 (última versión en PyPI, requiere `mcp[cli]>=1.6.0`) usa `@server.list_resources()`, eliminado en `mcp` ≥1.16; y `mcp` ≤1.15 importa `eval_type_backport` de internals de `pydantic`, eliminado en `pydantic` ≥2.12.
+- Solución verificada: `--with mcp==1.9.4 --with pydantic==2.11.7` junto a `--from mcp-server-sqlite`. Handshake `initialize`, `tools/list` (6 herramientas) y `read_query` real sobre `backend/barberia.db` funcionan.
+- Configuración actualizada en `opencode.json` (local, usa ruta absoluta del `uvx.exe` del Python de Microsoft Store porque `uvx` no está en el PATH) y en `opencode.json.example` (con `uvx` plano, sigue `disabled: true`). Documentación al día en `docs/mcp.md` y `AGENTS.md`.
+- Pendiente: agregar el directorio `Scripts` del Python de Microsoft Store al PATH del usuario para poder usar `uvx` plano; revisar que el token de GitHub de `opencode.json` local esté por entorno (`{env:GITHUB_PERSONAL_ACCESS_TOKEN}`) en vez de literal, como exige la plantilla.

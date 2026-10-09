@@ -17,7 +17,9 @@
           "--from",
           "mcp-server-sqlite",
           "--with",
-          "mcp==1.2.0",
+          "mcp==1.9.4",
+          "--with",
+          "pydantic==2.11.7",
           "mcp-server-sqlite",
           "--db-path",
           "backend/barberia.db"
