@@ -161,6 +161,9 @@ Sistema de gestión para barbería con backend FastAPI + frontend React PWA. Per
 - P2 no bloqueantes (ver cierre en tasks): bases/version informativas, empate sin tiebreak, aplicar-intervención gana LWW, backfill 008 ante create_all, resúmenes sin desconocido, deudas heredadas paquete 9.
 - No autoriza paquete 11 ni declara la spec implementada.
 
+## Spec 002 — paquete 11 redactado (2026-10-09)
+- `tasks.md` con T74–T81 en rama `feat/spec-002-paquete-11-jornadas-cierres`: jornada + fecha negocio, imputación, pertenencia/bloqueo/tardíos + momento en sync, resumen caja + cierre inmutable, acumulados nuevos, UI caja admin, UI barbero, regresión. Decisiones: todo junto, legacy intacto + nuevo, corregir momento en sync, acumulados nuevos, UI completa. Prohibidos: reinterpretar legacy, pertenencia inferida, apertura automática, reaperturas. Implementación pendiente de aprobación.
+
 ## Recuperación documental (2026-10-05)
 - Recuperado el contenido útil de `b211ee5` en una rama nueva desde `dev`, sin cherry-pick ni reescritura de la rama histórica `feat/mcp-config-y-offline`.
 - Conservados el estado y los pendientes actuales; no se recupera la afirmación antigua de que todos los tests están completos.
