@@ -17,6 +17,7 @@ from app.routers import (
     auditoria,
     sync,
     movimientos_corte,
+    jornadas,
 )
 
 # Crear tablas
@@ -51,6 +52,7 @@ app.include_router(reportes.router)
 app.include_router(auditoria.router)
 app.include_router(sync.router)
 app.include_router(movimientos_corte.router)
+app.include_router(jornadas.router)
 
 
 @app.get("/")

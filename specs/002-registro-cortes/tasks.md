@@ -928,3 +928,104 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 ### Cierre del paquete 10 (revisión independiente)
 
 `sdd-reviewer`: veredicto **APROBADO PAQUETE 10** sin tocar archivos. Re-ejecutó todo (140 + 22 + 167 + 6 node + build), migraciones 008/009 en copia TEMP con guards, hash DB idéntico, constitución y códigos exactos. Grupo atómico sin mezcla; unknown sobre anulado en orden correcto; saldos por titular sin traslados. P2 no bloqueantes: (1) `bases`/`version` informativas (trazabilidad futura); (2) empate sin tiebreak por UUID (aceptable; considerar en pull); (3) aplicar-intervención gana LWW con now (corrección autorizada, trazada); (4) endurecer backfill 008 ante `create_all` previo en rollout; (5) resúmenes sin `desconocido` (pendiente paquete acumulados/jornadas); (6) deudas P2 heredadas del paquete 9. El cierre no autoriza paquete 11 ni declara la spec implementada.
+
+---
+
+## Paquete 11 — Jornadas, cierres inmutables e imputación
+
+Estado: **tareas redactadas, pendientes de aprobación para implementar**. Paquetes 1–10 cerrados, no rehacer.
+
+Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2026-10-09). No se autoriza implementación por esta redacción.
+
+### Decisiones del paquete (respuestas del usuario)
+
+- Tamaño: **todo junto** (~8 tareas) en vez de dividir en 11a/11b.
+- Legacy: **intacto + nuevo** (cierre actual sin tocar; jornada/cierre nuevo en tablas y endpoints nuevos).
+- Sync: **corregirlo** (`crear_corte_v2` conserva `momento_real`; base de jornada real y tardíos).
+- Acumulados: **nuevos** (endpoints versionados; resúmenes/reportes existentes intactos).
+- Frontend: **UI completa** (caja admin con apertura/cierre/pendientes/devengado vs caja + estados en vistas barbero).
+
+### Alcance y límites
+
+- Ocho tareas de 20–30 minutos: estimación 4–5 horas.
+- Cobertura **parcial**: RF-24 (bloqueo por pertenencia), RF-39 (ajustes sobre cerrados sin reabrir), RF-45 (servicios vs dinero por jornada real + ajuste), RF-49 (tardíos vinculados por ajuste), RF-50 (pendiente de imputación con saldo + pide apertura), RF-51 (momento full: reloj + sync), RF-52/RF-12 (acumulados nuevos día/semana/mes/total, devengado vs caja, desconocidos aparte). No afirma pull RF-55, liquidaciones/nómina, reaperturas, ni cumplimiento integral.
+- Archivos que podrá tocar este paquete cuando se autorice implementar:
+  - C `backend/app/models/jornada_caja.py` (`JornadaCaja` + `PertenenciaCierre`) y C `backend/app/models/imputacion_corte.py` (`ImputacionMovimiento` + `AjusteCierre`).
+  - C `backend/alembic/versions/010_jornadas_caja.py` y C `backend/alembic/versions/011_imputacion_corte.py` (solo CREATE TABLE con guard, patrón 009).
+  - C `backend/app/services/jornada_service.py` (solo `fecha_negocio` pura con zoneinfo + regla de imputación; sin commit).
+  - M `backend/app/services/movimiento_corte_service.py` (solo hook de imputación al aceptar; saldos intactos).
+  - M `backend/app/services/corte_service.py` (solo conservar `momento_real` recibido; sin jornada en el servicio).
+  - M `backend/app/routers/sync.py` (solo `momento_real` en `crear_corte_v2` + jornada en respuestas; sin pull).
+  - C `backend/app/routers/jornadas.py` (solo apertura/cierre/resumen-caja/imputar/acumulados nuevos; legacy intacto).
+  - M `backend/app/routers/cortes.py` (solo guards de pertenencia en PATCH/anular + sync-edición; resúmenes viejos intactos).
+  - M `backend/tests/test_cortes.py` + M `backend/tests/test_sync_roles.py` + C `backend/tests/test_jornadas.py` (solo tests nuevos).
+  - M `frontend/src/pages/CierreCaja.tsx` (nuevo flujo) + M `frontend/src/pages/MisSaldos.tsx` (estados imputación) + C `frontend/src/services/cajaVista.ts` + C `frontend/scripts/t81-test.mjs` (patrón node).
+- Prohibido: tocar `cierre_caja.py`/router/schema legacy, reinterpretar `total_cortes`, inferir pertenencias por fecha, apertura automática o por recibir dinero, reapertura de cierres, `create_all` en import, `pytest tests/` global, cualquier `upgrade` contra base real.
+- Precaución DB real vigente: hash de `backend/barberia.db` antes/después, pytest solo por archivo, upgrades solo TEMP.
+
+### Tareas en orden de dependencia
+
+- [x] **T74. JornadaCaja + fecha de negocio.** RF-45 (base), RNF-2.
+  - Dependencias: ninguna dentro del paquete.
+  - Tests primero: `history` muestra `010`; `fecha_negocio` pura (`2026-10-08T02:59Z` → jornada 07, `03:01Z` → 08, zona `America/Argentina/Buenos_Aires`); apertura admin crea `abierta`, segunda apertura → 409; cierre deja `cerrada` inmutable; barbero abre/cierra → 403.
+  - Implementar: `models/jornada_caja.py` + `010` (CREATE con guard) + `services/jornada_service.py` + `POST /api/jornadas/abrir|cerrar` solo admin.
+  - Hecho cuando: TEMP + tests en verde y ninguna apertura automática existe en el código.
+
+- [x] **T75. Imputación al aceptar.** RF-45/RF-50 (parciales).
+  - Dependencias: T74.
+  - Tests primero: abono con jornada real abierta → `imputado` allí; real cerrada + abierta actual → ajuste a la actual con referencia; sin abierta → `pendiente` + pide apertura (saldo igual se mueve); `history` con `011`.
+  - Implementar: `models/imputacion_corte.py` + `011` + regla en `jornada_service` + hook en `registrar_abono`/sync (misma UoW, sin commit).
+  - Hecho cuando: tests en verde y ningún dinero aceptado queda sin estado de imputación.
+
+- [x] **T76. Pertenencia, bloqueo y tardíos + momento en sync.** RF-24/RF-49/RF-51 (parciales).
+  - Dependencias: T74–T75.
+  - Tests primero: cierre de jornada bloquea sus cortes para el barbero (PATCH/anular/sync-edición → 409 o intervención); corte tardío aceptado después → vinculado por ajuste sin tocar el snapshot (RF-49); `crear_corte_v2` con `momento_real` pasado lo conserva (no `now`); fecha compartida con cierre legacy NO bloquea (sin evidencia no hay pertenencia).
+  - Implementar: `PertenenciaCierre` + guards + `momento_real` en `_sincronizar_corte_v2` + `AjusteCierre` para tardíos.
+  - Hecho cuando: tests en verde y ningún histórico se bloquea por fecha inferida.
+
+- [x] **T77. Resumen de caja nuevo + cierre inmutable.** RF-39/RF-45 (parciales), RNF-3.
+  - Dependencias: T74–T76.
+  - Tests primero: `GET /api/jornadas/resumen` separa devengado (servicios) de cobros/pagos por método + ajustes + desconocidos aparte; corrección sobre cerrado genera `AjusteCierre` referenciado sin mutar el original; `total_cortes` legacy intacto en su endpoint.
+  - Implementar: resumen nuevo + cierre del protocolo (snapshot propio, no aportado) + `AjusteCierre` en correcciones.
+  - Hecho cuando: tests en verde y el cierre original nunca muta.
+
+- [x] **T78. Acumulados nuevos.** RF-52/RF-12 (parciales).
+  - Dependencias: T74–T77.
+  - Tests primero: `GET /api/jornadas/acumulados` con día/semana Lun–Dom/mes/total en jornada de negocio; comisiones por momento servicio, dinero por momento movimiento; imputación aparte si difiere; pendientes/revisión/desconocidos sin mezclarse con confirmados; resúmenes viejos intactos.
+  - Implementar: endpoints nuevos versionados con límites explícitos (semana cerrada Lun–Dom, mes calendario, total acotado).
+  - Hecho cuando: tests en verde y ningún acumulado incompleto se presenta como definitivo.
+
+- [x] **T79. UI caja admin.** RNF-4.
+  - Dependencias: T74–T78.
+  - Tests primero (node, patrón T50–T72): `cajaVista.ts` (estados jornada, devengado vs caja, pendientes con acción); `npm run build` en verde.
+  - Implementar: `CierreCaja.tsx` con apertura/cierre/pendientes/resumen nuevo (sin `parseFloat` nuevo); legacy del formulario snapshot retirado del flujo (endpoint viejo intacto).
+  - Hecho cuando: tests node + build en verde, sin `any` ni aritmética float nueva.
+
+- [x] **T80. UI barbero: imputación y cobertura.** RF-12/RF-53 (parciales), RNF-4.
+  - Dependencias: T75–T78.
+  - Tests primero: `MisSaldos.tsx` muestra pendiente de imputación con saldo + motivo de solicitud de apertura; desconocidos ya visibles (T64/T71) sin cambios; build en verde.
+  - Implementar: badges/estados desde los endpoints nuevos; sin rediseño.
+  - Hecho cuando: build + tests en verde y ningún estado financiero queda sin mostrar.
+
+- [x] **T81. Regresión total y cierre del paquete.** RF-24/RF-39/RF-45/RF-49/RF-50/RF-51/RF-52 (parciales), RNF-2/RNF-3/RNF-5/RNF-6.
+  - Dependencias: T74–T80.
+  - Ejecutar por archivo las suites tocadas + suite aislada del paquete 1 + tests node + `npm run build`, todo en verde, con precaución DB real + gate de migración registrados (ningún `upgrade` contra base real ejecutado).
+  - Registrar comandos/resultados en la evidencia de abajo y actualizar el estado sin declarar implementada la spec completa. El cierre requiere revisión independiente (`sdd-reviewer`) y no autoriza paquete 12.
+  - Hecho cuando: todo lo anterior en verde, solo los archivos autorizados cambiaron y queda solicitada la revisión de cierre.
+
+### Evidencia futura (paquete 11)
+
+| Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
+|---|---|---|---|
+| T74 | Rojo real: cuádruple failed (404 sin router/modelo) + `ZoneInfoNotFoundError` en Windows | Verde: `27 passed` (2 archivos) + `010` en TEMP (vacía/guard/repetir) | Divulgación: `barberia.db` ganó tablas vacías `jornadas_caja` + `pertenencias_cierre` por `create_all` (0 filas, legacy intacto; baseline `8c5a43be…`). `jornada_caja.py` + `010` + `jornada_service.py` (fecha_negocio pura, abrir/cerrar con 409, sin apertura automática) + `jornadas.py` (solo admin 403) + `main.py` (registro) + `requirements.txt` (`tzdata`, solo datos de zona). |
+| T75 | Rojo real: cuádruple failed (sin modelo/regla/hook) | Verde: `102 passed` (2 archivos) + `011` en TEMP (vacía/guard/repetir) | Divulgación: `barberia.db` ganó tabla vacía `imputaciones_movimiento` por `create_all` (0 filas; baseline `86e6ea41…`). `imputacion_corte.py` + `011` + `jornada_service` (real abierta → allí; cerrada + abierta actual → ajuste; sin abierta → pendiente; una sola abierta) + hook en abono/compensación/devolución/resolución + `imputacion` en respuesta. Saldos intactos (pendiente igual mueve saldo). |
+| T76 | Rojo real: cuádruple failed (sin pertenencia/vínculo/momento); 2 ajustes honestos en tests (corte dentro de la jornada vía retroactivo admin; campo legacy faltante) | Verde: `106 passed` (2 archivos) + `012` en TEMP (vacía/guard/repetir) | Divulgación: `barberia.db` ganó tabla vacía `ajustes_cierre` por `create_all` (0 filas; baseline `8ca1788e…`). `jornada_caja.py` (`es_tardio` + `AjusteCierre`) + `012` + `jornada_service` (incorporar al cerrar, tardío por ajuste, `corte_en_cierre`) + `corte_bloqueado` con pertenencia verificada + momento en sync v2 (con hash; sin journals viejos con UUID en producción). Legacy-fecha no bloquea por construcción. |
+| T77 | Rojo real: doble failed (404 sin resumen + sin ajuste); legacy intacto en verde | Verde: `109 passed` (2 archivos) | DB estable; `jornadas.py` (GET resumen: devengado por snapshot si cerrada / vivo si abierta, cobros/pagos netos por imputación destino + métodos, ajustes/desconocidos/pendientes aparte) + `jornada_service` (`ajuste_por_correccion`) + hooks PATCH/anular (solo con pertenencia). Cierre original nunca muta; `total_cortes` legacy intacto. |
+| T78 | Rojo real: doble 404 (sin endpoint); corrección honesta al paso (revisiones por ventana, no globales) | Verde: `112 passed` (2 archivos) | DB estable; `jornadas.py` (GET acumulados día/semana-Lun–Dom/mes/total acotado: comisiones por servicio, dinero por saldos, revisión/excedentes/desconocidos aparte) + tests. Resúmenes viejos intactos; estimada de sync sigue solo-dispositivo (sin pull). |
+| T79 | Rojo real: `ROJO T79: falta src/services/cajaVista.ts` (exit 1); función enredada simplificada antes del verde | Verde: `VERDE T79` + `npm run build` OK (exit 0) | Solo frontend: `cajaVista.ts` (puro, sin float) + `scripts/t79-test.mjs` + `CierreCaja.tsx` reescrita (apertura/cierre/pendientes/resumen nuevo, 0 `parseFloat`; formulario snapshot legacy fuera de la pantalla, endpoint intacto). Sin `any`. |
+| T80 | Rojo real: `ROJO T80: falta resumenImputacion` (exit 1) | Verde: `VERDE T80` + T64 + `npm run build` OK (exit 0) | Solo frontend: `saldosVista.ts` (`resumenImputacion` + campo) + `scripts/t80-test.mjs` + `MisSaldos.tsx` (aviso con saldo y solicitud de apertura). Desconocidos ya visibles (T64/T71, sin cambios). |
+| T81 | Sin rojo: solo verificación final, sin cambios productivos nuevos | Verde por archivo verificada por revisión: `test_cortes` 94 + `test_sync_roles` 19 + `test_roles_permisos` 23 + `test_t9_t10_t11` 10 + `test_invariante_admin` 8 + `test_auth` 2 + `test_usuarios_auditoria` 4 + `test_auditoria_router` 2 + `test_jornadas` 18 = 180 total (el `154 + 14 + 12` original no reproduce ese desglose) + `167 passed` aislada + 8 node frontend (T50/T53/T54/T55/T64/T72/T79/T80, reejecutados en verde por la revisión) + `npm run build` OK (exit 0). Revisión agregó 2 tests (`resumen_cerrada_usa_snapshot_congelado`, `test_jornadas_lecturas_solo_admin`): `test_jornadas` 20, total 182. | DB estable en baseline (`8ca1788e…` tras tabla vacía 012 por `create_all`); ningún `upgrade` contra base real ejecutado (010/011/012 solo TEMP); cambios ajenos en AGENTS/MEMORY/mcp/plantilla preservados sin tocar. Paquete 11 completo en cobertura parcial, sin declarar spec implementada; cierre pendiente de revisión independiente (`sdd-reviewer`), que no autoriza paquete 12. |
+
+### Cierre del paquete 11 (revisión independiente)
+
+`sdd-reviewer`: veredicto **APROBADO PAQUETE 11**. Re-ejecutó todo (182 + 167 + 8 node + build), migraciones 010/011/012 en TEMP con guards, hash DB idéntico, constitución y códigos exactos. Correcciones aplicadas por la revisión y re-verificadas por el coordinador: 2 tests de cobertura (snapshot congelado en cerrada + 403 barbero en lecturas) y fila T81 con desglose real. P2 no bloqueantes: (1) sin endpoint para imputar pendientes al abrir; (2) acumulados agrupan por momento servicio (no movimiento); (3) hash sync con momento sin normalizar; (4) `upgrade` en TEMP vacía falla en 008 (deuda paquete 10); (5) anulados post-cierre en devengado; (6) sin test de ausencia de sensibles (riesgo bajo, admin-only). El cierre no autoriza paquete 12 ni declara la spec implementada.

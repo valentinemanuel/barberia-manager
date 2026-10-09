@@ -55,4 +55,9 @@ def crear_corte(
     # sync), con un solo commit por operacion. Flush asigna el ID.
     db.flush()
     db.refresh(corte)
+    # Pertenencia tardía (paquete 11, RF-49, T76): si su jornada ya cerró,
+    # se vincula por ajuste sin tocar el cierre original.
+    from app.services.jornada_service import vincular_corte
+
+    vincular_corte(db, corte_id=corte.id, autor_id=barbero.id)
     return corte

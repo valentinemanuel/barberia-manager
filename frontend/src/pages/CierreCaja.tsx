@@ -9,82 +9,76 @@ import {
   SkeletonLineas,
   useToast,
 } from '../components/ui'
-import { formatearMoneda, formatearFecha, pluralizar } from '../utils/formato'
+import { formatearFecha, pluralizar } from '../utils/formato'
+import {
+  etiquetaEstadoJornada,
+  lineaMetodo,
+  textoBalance,
+  textoPendientes,
+} from '../services/cajaVista'
 
-interface ResumenDia {
+interface ResumenCaja {
   fecha: string
-  total_cortes: number
-  total_productos: number
-  total_consumibles: number
-  total_ingresos: number
-  total_gastos: number
-  ganancia_neta: number
-  cantidad_cortes: number
+  estado: string
+  devengado: { cortes: number; total: string }
+  cobros: { total: string; por_metodo: Record<string, string> }
+  pagos: { total: string }
+  ajustes: number
+  desconocidos: number
+  pendientes: number
 }
 
+/**
+ * Caja del admin (paquete 11, T79): apertura/cierre explícitos de jornada,
+ * resumen nuevo (devengado separado de cobros/pagos por método) y
+ * pendientes de imputación. Sin conteo físico con float: el flujo legacy
+ * de snapshot aportado queda fuera de esta pantalla (endpoint intacto).
+ */
 export default function CierreCaja() {
   const { mostrar } = useToast()
-  const [resumen, setResumen] = useState<ResumenDia | null>(null)
+  const hoyLocal = () => {
+    const ahora = new Date()
+    const mes = String(ahora.getMonth() + 1).padStart(2, '0')
+    const dia = String(ahora.getDate()).padStart(2, '0')
+    return `${ahora.getFullYear()}-${mes}-${dia}`
+  }
+  const [fecha, setFecha] = useState(hoyLocal())
+  const [resumen, setResumen] = useState<ResumenCaja | null>(null)
   const [cargando, setCargando] = useState(true)
-  const [totalEnCaja, setTotalEnCaja] = useState('')
-  const [montoRetirado, setMontoRetirado] = useState('')
-  const [guardando, setGuardando] = useState(false)
+  const [operando, setOperando] = useState(false)
 
   useEffect(() => {
     cargarResumen()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fecha])
 
   const cargarResumen = async () => {
+    setCargando(true)
     try {
-      const response = await api.get('/cierre-caja/resumen/dia')
+      const response = await api.get(`/jornadas/resumen?fecha=${fecha}`)
       setResumen(response.data)
-    } catch (error) {
-      console.error('Error cargando resumen:', error)
-      mostrar('error', 'No se pudo cargar el resumen del día')
+    } catch (error: unknown) {
+      if ((error as { response?: { status?: number } }).response?.status === 404) {
+        setResumen(null)
+      } else {
+        console.error('Error cargando resumen:', error)
+        mostrar('error', 'No se pudo cargar el resumen de la jornada')
+      }
     } finally {
       setCargando(false)
     }
   }
 
-  const diferencia = resumen
-    ? (parseFloat(totalEnCaja) || 0) -
-      (parseFloat(montoRetirado) || 0) -
-      resumen.total_ingresos
-    : 0
-
-  const hayMontos = totalEnCaja !== '' && montoRetirado !== ''
-
-  const claseDiferencia = !hayMontos
-    ? ''
-    : diferencia === 0
-    ? 'cierre__diferencia--cuadra'
-    : diferencia > 0
-    ? 'cierre__diferencia--sobra'
-    : 'cierre__diferencia--falta'
-
-  const manejarCierre = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!resumen) return
-
-    setGuardando(true)
+  const operar = async (accion: 'abrir' | 'cerrar') => {
+    setOperando(true)
     try {
-      await api.post('/cierre-caja/', {
-        fecha: resumen.fecha,
-        total_cortes: resumen.total_cortes,
-        total_productos: resumen.total_productos,
-        total_consumibles: resumen.total_consumibles,
-        total_ingresos: resumen.total_ingresos,
-        total_gastos: resumen.total_gastos,
-        total_en_caja: parseFloat(totalEnCaja),
-        monto_retirado: parseFloat(montoRetirado),
-      })
-      mostrar('exito', 'Cierre de caja realizado')
-      setTotalEnCaja('')
-      setMontoRetirado('')
+      await api.post(`/jornadas/${accion}`, { fecha })
+      mostrar('exito', accion === 'abrir' ? 'Jornada abierta' : 'Jornada cerrada')
+      await cargarResumen()
     } catch (error: unknown) {
-      mostrar('error', mensajeError(error, 'No se pudo realizar el cierre'))
+      mostrar('error', mensajeError(error, `No se pudo ${accion} la jornada`))
     } finally {
-      setGuardando(false)
+      setOperando(false)
     }
   }
 
@@ -100,128 +94,78 @@ export default function CierreCaja() {
     )
   }
 
-  if (!resumen) {
-    return (
-      <div className="contenedor">
-        <div className="pagina">
-          <h1>Cierre de caja</h1>
-          <p className="texto-suave">
-            No se pudo cargar el resumen. Revisá la conexión y recargá la pantalla.
-          </p>
-          <div>
-            <Boton variante="secundario" onClick={cargarResumen}>
-              Reintentar
-            </Boton>
-          </div>
-        </div>
-      </div>
-    )
-  }
+  const pendientes = resumen ? textoPendientes(resumen.pendientes) : null
 
   return (
     <div className="contenedor">
       <div className="pagina">
         <header className="pagina__cabecera">
           <div>
-            <h1>Cierre de caja</h1>
-            <p className="pagina__descripcion">{formatearFecha(resumen.fecha)}</p>
+            <h1>Caja por jornada</h1>
+            <p className="pagina__descripcion">{formatearFecha(fecha)}</p>
           </div>
         </header>
 
-        <Tarjeta titulo="Resumen del día">
-          <div className="cierre__resumen">
-            <Cifra
-              etiqueta="Cortes"
-              valor={formatearMoneda(resumen.total_cortes)}
-              pie={`${resumen.cantidad_cortes} ${pluralizar(resumen.cantidad_cortes, 'atendido', 'atendidos')}`}
-            />
-            <Cifra
-              etiqueta="Productos"
-              valor={formatearMoneda(resumen.total_productos)}
-            />
-            <Cifra
-              etiqueta="Consumibles"
-              valor={formatearMoneda(resumen.total_consumibles)}
-            />
-            <Cifra
-              etiqueta="Gastos"
-              valor={`-${formatearMoneda(resumen.total_gastos)}`}
-              className="texto-peligro"
-            />
-          </div>
-          <div style={{ marginTop: 'var(--sp-5)' }}>
-            <Cifra
-              etiqueta="En caja según registros"
-              valor={formatearMoneda(resumen.total_ingresos)}
-              destacada
-            />
-          </div>
-        </Tarjeta>
+        <Campo etiqueta="Jornada" id="jornada-fecha">
+          <input
+            id="jornada-fecha"
+            type="date"
+            className="ui-campo__control"
+            value={fecha}
+            onChange={(e) => setFecha(e.target.value)}
+          />
+        </Campo>
 
-        <form onSubmit={manejarCierre} className="pagina">
-          <Tarjeta titulo="Realizar cierre">
-            <div className="pagina">
-              <Campo
-                etiqueta="Total en caja (físico)"
-                id="cierre-total"
-                pista="Lo que hay en el cajón ahora mismo"
-              >
-                <input
-                  id="cierre-total"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  className="ui-campo__control"
-                  value={totalEnCaja}
-                  onChange={(e) => setTotalEnCaja(e.target.value)}
-                  required
-                  placeholder="0.00"
-                />
-              </Campo>
-
-              <Campo
-                etiqueta="Monto retirado"
-                id="cierre-retiro"
-                pista="Lo que sacás de la caja"
-              >
-                <input
-                  id="cierre-retiro"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  className="ui-campo__control"
-                  value={montoRetirado}
-                  onChange={(e) => setMontoRetirado(e.target.value)}
-                  required
-                  placeholder="0.00"
-                />
-              </Campo>
-
-              <div className={`cierre__diferencia ${claseDiferencia}`.trim()}>
-                <span className="ui-cifra__etiqueta">Diferencia</span>
-                <span className="ui-cifra__valor cifra">
-                  {hayMontos ? formatearMoneda(diferencia) : '—'}
-                </span>
-                {hayMontos && diferencia !== 0 && (
-                  <span className="cierre__diferencia-nota">
-                    {diferencia > 0
-                      ? 'Hay más dinero en caja que el registrado. Revisá si faltó cargar ventas.'
-                      : 'Hay menos dinero en caja que el registrado. Revisá si faltó cargar gastos.'}
-                  </span>
-                )}
-                {hayMontos && diferencia === 0 && (
-                  <span className="cierre__diferencia-nota">
-                    La caja cuadra con los registros.
-                  </span>
-                )}
-              </div>
-
-              <Boton type="submit" cargando={guardando} ancho>
-                Realizar cierre de caja
-              </Boton>
-            </div>
+        {!resumen ? (
+          <Tarjeta titulo="Sin jornada registrada">
+            <p className="pagina__descripcion">
+              Esta fecha no tiene jornada. La apertura es explícita del admin.
+            </p>
+            <Boton cargando={operando} onClick={() => operar('abrir')}>
+              Abrir jornada
+            </Boton>
           </Tarjeta>
-        </form>
+        ) : (
+          <>
+            <Tarjeta
+              titulo={`Jornada ${etiquetaEstadoJornada(resumen.estado)}`}
+              acciones={
+                resumen.estado === 'abierta' ? (
+                  <Boton variante="secundario" cargando={operando} onClick={() => operar('cerrar')}>
+                    Cerrar jornada
+                  </Boton>
+                ) : undefined
+              }
+            >
+              <div className="cierre__resumen">
+                <Cifra
+                  etiqueta="Servicios devengados"
+                  valor={`$${resumen.devengado.total}`}
+                  pie={`${resumen.devengado.cortes} ${pluralizar(resumen.devengado.cortes, 'corte', 'cortes')}`}
+                />
+                <Cifra
+                  etiqueta="Cobrado"
+                  valor={`$${resumen.cobros.total}`}
+                  pie={textoBalance(resumen.cobros.total, resumen.pagos.total)}
+                />
+              </div>
+              <ul>
+                {Object.entries(resumen.cobros.por_metodo).map(([metodo, total]) => (
+                  <li key={metodo}>{lineaMetodo(metodo, total)}</li>
+                ))}
+              </ul>
+              {pendientes && <p>{pendientes}: se solicita apertura administrativa.</p>}
+              {resumen.ajustes > 0 && (
+                <p>
+                  {resumen.ajustes} {pluralizar(resumen.ajustes, 'ajuste', 'ajustes')} posterior(es) sin mutar el cierre.
+                </p>
+              )}
+              {resumen.desconocidos > 0 && (
+                <p>{resumen.desconocidos} con información histórica incompleta.</p>
+              )}
+            </Tarjeta>
+          </>
+        )}
       </div>
     </div>
   )

@@ -334,6 +334,15 @@ def editar_corte_endpoint(
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    # Corrección sobre cierre (RF-39, T77): ajuste referenciado, sin mutar.
+    if any(v == "aplicada" for v in unidades.values()):
+        from app.services.jornada_service import ajuste_por_correccion
+
+        ajuste_por_correccion(
+            db, corte_id=corte.id, autor_id=actor.id,
+            motivo=datos.motivo or "corrección",
+            detalle={"unidades": unidades},
+        )
     db.commit()
     db.refresh(corte)
     respuesta = CorteEdicionResponse.model_validate(corte)
@@ -511,6 +520,14 @@ def anular_corte_endpoint(
         antes=antes_anulacion,
         despues=despues_anulacion,
         motivo=datos.motivo,
+    )
+    # Anulación sobre cierre (RF-39, T77): ajuste referenciado.
+    from app.services.jornada_service import ajuste_por_correccion as ajuste_anular
+
+    ajuste_anular(
+        db, corte_id=corte.id, autor_id=actor.id,
+        motivo=datos.motivo or "anulación",
+        detalle={"accion": "anular"},
     )
     db.commit()
     db.refresh(corte)
