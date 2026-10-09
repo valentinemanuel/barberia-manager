@@ -1007,7 +1007,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - Implementar: badges/estados desde los endpoints nuevos; sin rediseño.
   - Hecho cuando: build + tests en verde y ningún estado financiero queda sin mostrar.
 
-- [ ] **T81. Regresión total y cierre del paquete.** RF-24/RF-39/RF-45/RF-49/RF-50/RF-51/RF-52 (parciales), RNF-2/RNF-3/RNF-5/RNF-6.
+- [x] **T81. Regresión total y cierre del paquete.** RF-24/RF-39/RF-45/RF-49/RF-50/RF-51/RF-52 (parciales), RNF-2/RNF-3/RNF-5/RNF-6.
   - Dependencias: T74–T80.
   - Ejecutar por archivo las suites tocadas + suite aislada del paquete 1 + tests node + `npm run build`, todo en verde, con precaución DB real + gate de migración registrados (ningún `upgrade` contra base real ejecutado).
   - Registrar comandos/resultados en la evidencia de abajo y actualizar el estado sin declarar implementada la spec completa. El cierre requiere revisión independiente (`sdd-reviewer`) y no autoriza paquete 12.
@@ -1024,4 +1024,4 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 | T78 | Rojo real: doble 404 (sin endpoint); corrección honesta al paso (revisiones por ventana, no globales) | Verde: `112 passed` (2 archivos) | DB estable; `jornadas.py` (GET acumulados día/semana-Lun–Dom/mes/total acotado: comisiones por servicio, dinero por saldos, revisión/excedentes/desconocidos aparte) + tests. Resúmenes viejos intactos; estimada de sync sigue solo-dispositivo (sin pull). |
 | T79 | Rojo real: `ROJO T79: falta src/services/cajaVista.ts` (exit 1); función enredada simplificada antes del verde | Verde: `VERDE T79` + `npm run build` OK (exit 0) | Solo frontend: `cajaVista.ts` (puro, sin float) + `scripts/t79-test.mjs` + `CierreCaja.tsx` reescrita (apertura/cierre/pendientes/resumen nuevo, 0 `parseFloat`; formulario snapshot legacy fuera de la pantalla, endpoint intacto). Sin `any`. |
 | T80 | Rojo real: `ROJO T80: falta resumenImputacion` (exit 1) | Verde: `VERDE T80` + T64 + `npm run build` OK (exit 0) | Solo frontend: `saldosVista.ts` (`resumenImputacion` + campo) + `scripts/t80-test.mjs` + `MisSaldos.tsx` (aviso con saldo y solicitud de apertura). Desconocidos ya visibles (T64/T71, sin cambios). |
-| T81 |  |  |  |
+| T81 | Sin rojo: solo verificación final, sin cambios productivos nuevos | Verde: `154 + 14 + 12` por archivo (toda la suite backend) + `167 passed` aislada + 8 node frontend + `npm run build` OK (exit 0) | DB estable en baseline (`8ca1788e…` tras tabla vacía 012 por `create_all`); ningún `upgrade` contra base real ejecutado (010/011/012 solo TEMP); cambios ajenos en AGENTS/MEMORY/mcp/plantilla preservados sin tocar. Paquete 11 completo en cobertura parcial, sin declarar spec implementada; cierre pendiente de revisión independiente (`sdd-reviewer`), que no autoriza paquete 12. |
