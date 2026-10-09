@@ -1029,3 +1029,93 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 ### Cierre del paquete 11 (revisión independiente)
 
 `sdd-reviewer`: veredicto **APROBADO PAQUETE 11**. Re-ejecutó todo (182 + 167 + 8 node + build), migraciones 010/011/012 en TEMP con guards, hash DB idéntico, constitución y códigos exactos. Correcciones aplicadas por la revisión y re-verificadas por el coordinador: 2 tests de cobertura (snapshot congelado en cerrada + 403 barbero en lecturas) y fila T81 con desglose real. P2 no bloqueantes: (1) sin endpoint para imputar pendientes al abrir; (2) acumulados agrupan por momento servicio (no movimiento); (3) hash sync con momento sin normalizar; (4) `upgrade` en TEMP vacía falla en 008 (deuda paquete 10); (5) anulados post-cierre en devengado; (6) sin test de ausencia de sensibles (riesgo bajo, admin-only). El cierre no autoriza paquete 12 ni declara la spec implementada.
+
+---
+
+## Paquete 12 — Cierre integral (posible último de la spec)
+
+Estado: **tareas redactadas, pendientes de aprobación para implementar**. Paquetes 1–11 cerrados, no rehacer.
+
+Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2026-10-09). No se autoriza implementación por esta redacción.
+
+### Decisiones del paquete (respuestas del usuario)
+
+- Pull RF-55: **diferir a spec hija** (`specs/003-pull-offline/`); el cierre declara la spec funcionalmente completa salvo pull, sin falso verde.
+- Cliente typed: **toda la app** (no solo pantallas 002; `api.ts` legacy intacto donde no llegue).
+- Imputar al abrir: **incluir** (`POST /jornadas/{id}/imputaciones`, idempotente + test).
+- Deudas duras: **intentar** (endurecer UoW SQLite + fix 008 TEMP vacía + documentar límite multi-worker/PG; bóveda cifrada a spec hija por superficie criptográfica propia).
+- E2E: **incluir** (Playwright prod + backend TEMP como evidencia de cierre).
+
+### Alcance y límites
+
+- Ocho tareas de 20–30 minutos: estimación 4–5 horas.
+- Cobertura: RF-7/RF-12 (estimada/confirmada/pagada/pendiente), RF-33/RNF-5 (cuentas), RF-35 (catálogo), RF-41/RNF-1 (exactitud global frontend), RF-50 (imputar al abrir), RF-53 (revisión resuelta), RF-57 (resultados), RNF-2/RNF-3/RNF-4/RNF-6. Deudas que se intentan: erroneo-idempotente, evidencia en compensación positiva, replay-acuse, UUID-409, normalizar momento, carrera abonos (UoW), 008 vacía. Diferidos a spec hija: pull RF-55 completo, bóveda cifrada, protocolo PG completo, locale moneda.
+- Archivos que podrá tocar este paquete cuando se autorice implementar:
+  - C `frontend/src/services/cortesApi.ts` (solo fetch typed + codecs; `api.ts` intacto salvo lo listado).
+  - M `frontend/src/pages/RegistroCortes.tsx`, `MisSaldos.tsx`, `DashboardBarbero.tsx`, `GestionProductos.tsx`, `GestionServicios.tsx`, `GestionUsuarios.tsx`, `CierreCaja.tsx` (solo exactitud; sin rediseño).
+  - M `frontend/src/utils/formato.ts` (solo sobrecarga string-exacto; locale intacto).
+  - M `backend/app/routers/jornadas.py` + M `backend/app/services/jornada_service.py` (solo imputar al abrir).
+  - M `backend/app/routers/movimientos_corte.py` + M `backend/app/services/movimiento_corte_service.py` + M `backend/app/routers/sync.py` (solo idempotencia dura + normalización).
+  - M `backend/alembic/versions/008_lww_reasignacion.py` (solo fix TEMP vacía; sin tocar upgrades verificados).
+  - C `frontend/tests/e2e/*` (solo suite integral prod + TEMP) + C `specs/003-pull-offline/spec.md` (solo esqueleto de spec hija).
+- Prohibido: pull completo, bóveda, migración PG, reinterpretar legacy, `create_all` en import, `pytest tests/` global, cualquier `upgrade` contra base real.
+- Precaución DB real vigente: hash de `backend/barberia.db` antes/después, pytest solo por archivo, upgrades solo TEMP.
+
+### Tareas en orden de dependencia
+
+- [ ] **T82. Cliente typed core.** RNF-1/RNF-6.
+  - Dependencias: ninguna dentro del paquete.
+  - Tests primero (node, patrón T50–T80): `cortesApi.ts` conserva strings exactos del API (sin `Number()` global), codec dígitos en ambos sentidos, `formatearMoneda` acepta string exacto; `npm run build` en verde.
+  - Implementar: fetch typed para 002 + sobrecarga `formatearMoneda(string)`; `api.ts` intacto.
+  - Hecho cuando: tests node + build en verde y ningún string monetario pasa por float en el camino nuevo.
+
+- [ ] **T83. Pantallas 002 sin float.** RF-7/RF-12 (parciales), RNF-1.
+  - Dependencias: T82.
+  - Tests primero: `RegistroCortes` (estimada y cobro en centavos/centésimas puros, sin `toFixed/Math.round/*100`), `MisSaldos` y `DashboardBarbero` (display desde strings, `Number()` solo conteos); build en verde.
+  - Hecho cuando: grep sin `parseFloat/toFixed(*100)/Math.round(*100)` en pantallas 002 y build en verde.
+
+- [ ] **T84. Resto de la app sin float.** RNF-1/RNF-4.
+  - Dependencias: T82.
+  - Tests primero: formularios y caja sin `Number(e.target.value)` monetario (codec de frontera), build en verde; locale y diseño intactos.
+  - Hecho cuando: ningún input monetario de la app convierte por float y build en verde.
+
+- [ ] **T85. Imputar pendientes al abrir.** RF-50 (cierre), RNF-6.
+  - Dependencias: ninguna (backend puro).
+  - Tests primero: pendientes con real en la jornada que se abre → `IMPUTADA` con destino (idempotente, replay no duplica); sin real en ella → siguen pendientes; barbero → 403.
+  - Implementar: `POST /api/jornadas/{id}/imputaciones` solo admin (misma UoW, sin auto-aplicar nada más).
+  - Hecho cuando: tests en verde y ningún pendiente queda sin estado tras abrir su jornada.
+
+- [ ] **T86. Idempotencia dura.** RF-32/RF-41/RF-53 (cierre).
+  - Dependencias: ninguna (backend puro).
+  - Tests primero: erroneo re-ejecutable exige UUID (sin UUID → 409, no duplica); compensación positiva exige evidencia; replay `real` devuelve acuse (no 409); UUID movimiento con distinto payload → 409; momento normalizado (ISO equivalentes, mismo hash).
+  - Implementar: normalizar `momento.isoformat()`, comparar hash en abonos, UUID obligatoria en resolución-erroneo, evidencia si compensación > 0.
+  - Hecho cuando: tests en verde y ningún replay crea ni recalcula de más.
+
+- [ ] **T87. UoW dura SQLite + fix 008.** RNF-6 + gate despliegue.
+  - Dependencias: ninguna.
+  - Tests primero: carrera de abonos ordinarios paralelos no supera el saldo (serialización); `upgrade head` en TEMP vacía llega a head (008 tolera tablas ausentes); documentar límite multi-worker/PG en `plan.md`/tasks.
+  - Implementar: serialización mínima en registro crítico + guard 008; sin protocolo PG (deuda de spec hija).
+  - Hecho cuando: carrera y TEMP vacía en verde + límite documentado.
+
+- [ ] **T88. E2E integral.** Criterios de finalización, RNF-6.
+  - Dependencias: T82–T87.
+  - Tests primero (Playwright prod + backend TEMP, sin login fijo ni `import /src/`): barbero offline→sync→historial con momento real; exceso→revisión→resolución con excedente; bloqueo→intervención→aplicar; apertura sin conexión con datos previos; privacidad barbero/admin.
+  - Hecho cuando: suite E2E en verde y cada criterio tiene evidencia o deuda explícita.
+
+- [ ] **T89. Cierre documental + spec hija.** Cierre, RNF-6.
+  - Dependencias: T82–T88.
+  - Esqueleto `specs/003-pull-offline/spec.md` (alcance RF-55 + diseño plan §6.F–§7, en borrador, sin implementar); regresión total (suites + node + build); actualizar `tasks.md`/`MEMORY.md`/`spec.md` (estado implementada salvo pull); revisión `sdd-reviewer` de cierre.
+  - Hecho cuando: todo en verde, spec 002 declarada completa salvo pull con hija redactada, y revisión de cierre emitida.
+
+### Evidencia futura (paquete 12)
+
+| Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
+|---|---|---|---|
+| T82 |  |  |  |
+| T83 |  |  |  |
+| T84 |  |  |  |
+| T85 |  |  |  |
+| T86 |  |  |  |
+| T87 |  |  |  |
+| T88 |  |  |  |
+| T89 |  |  |  |
