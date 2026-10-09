@@ -400,3 +400,66 @@ def test_legacy_resumen_intacto(client):
     r = client.get("/api/cierre-caja/resumen/dia", headers=_headers(_token(client, "admin_j77c")))
     assert r.status_code == 200
     assert "total_cortes" in r.json()
+
+
+def test_acumulados_dia_semana_mes(client):
+    """T78 (RF-52): ventanas en jornada de negocio; comisiones por servicio, dinero aparte."""
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_j78", Rol.ADMIN)
+    servicio_id = _servicio_y_usuarios(db, "barb_j78")
+    db.close()
+    auth_admin = _headers(_token(client, "admin_j78"))
+    hoy = _abrir_hoy(client, _token(client, "admin_j78"))
+    token = _token(client, "barb_j78")
+    corte_id = _corte_simple(client, token, servicio_id)
+    assert client.post(f"/api/cortes/{corte_id}/movimientos", headers=_headers(token), json={
+        "concepto": "cliente", "importe": "40.00", "metodo_pago": "efectivo",
+    }).status_code == 201
+    for periodo in ("dia", "semana", "mes"):
+        r = client.get(f"/api/jornadas/acumulados?periodo={periodo}&fecha={hoy}", headers=auth_admin)
+        assert r.status_code == 200, periodo
+        data = r.json()
+        assert data["comisiones"]["devengada"] == "50.00", periodo
+        assert data["comisiones"]["pendiente"] == "50.00", periodo
+        assert data["cobros"]["neto"] == "40.00", periodo
+    r = client.get(f"/api/jornadas/acumulados?periodo=total&fecha={hoy}", headers=auth_admin)
+    assert r.json()["comisiones"]["devengada"] == "50.00"
+
+
+def test_acumulados_separan_revision_y_desconocido(client):
+    """T78 (RF-12/53): revisión y desconocidos fuera de confirmados."""
+    import uuid as uuid_lib
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_j78b", Rol.ADMIN)
+    servicio_id = _servicio_y_usuarios(db, "barb_j78b")
+    db.close()
+    auth_admin = _headers(_token(client, "admin_j78b"))
+    hoy = _abrir_hoy(client, _token(client, "admin_j78b"))
+    token = _token(client, "barb_j78b")
+    corte_id = _corte_simple(client, token, servicio_id)
+    uuid_val = str(uuid_lib.uuid4())
+    assert client.post("/api/sync/", headers=_headers(token), json={"operaciones": [{
+        "id": uuid_val, "accion": "registrar_abono_v2", "datos": {
+            "operacion_uuid": uuid_val, "corte_id": corte_id, "concepto": "cliente",
+            "importe": "150.00", "metodo_pago": "efectivo", "modo_captura": "offline",
+        },
+    }]}).json()["resultados"][0]["estado"] == "revision"
+    assert client.post(f"/api/cortes/{corte_id}/evidencia-financiera", headers=auth_admin, json={
+        "concepto": "comision", "conocido": False, "evidencia": "legajo",
+    }).status_code == 200
+    r = client.get(f"/api/jornadas/acumulados?periodo=dia&fecha={hoy}", headers=auth_admin)
+    data = r.json()
+    assert data["revision"]["total"] == "150.00"
+    assert data["revision"]["cantidad"] == 1
+    assert data["comisiones"]["desconocida"] == "50.00"
+    assert data["comisiones"]["devengada"] == "0.00"
+
+
+def test_acumulados_resumenes_viejos_intactos(client):
+    """T78 (RNF-3): resúmenes personales y reportes viejos intactos."""
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barb_j78c", Rol.BARBERO)
+    db.close()
+    token = _token(client, "barb_j78c")
+    assert client.get("/api/cortes/mi/resumen/dia", headers=_headers(token)).status_code == 200

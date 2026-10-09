@@ -989,7 +989,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - Implementar: resumen nuevo + cierre del protocolo (snapshot propio, no aportado) + `AjusteCierre` en correcciones.
   - Hecho cuando: tests en verde y el cierre original nunca muta.
 
-- [ ] **T78. Acumulados nuevos.** RF-52/RF-12 (parciales).
+- [x] **T78. Acumulados nuevos.** RF-52/RF-12 (parciales).
   - Dependencias: T74–T77.
   - Tests primero: `GET /api/jornadas/acumulados` con día/semana Lun–Dom/mes/total en jornada de negocio; comisiones por momento servicio, dinero por momento movimiento; imputación aparte si difiere; pendientes/revisión/desconocidos sin mezclarse con confirmados; resúmenes viejos intactos.
   - Implementar: endpoints nuevos versionados con límites explícitos (semana cerrada Lun–Dom, mes calendario, total acotado).
@@ -1021,7 +1021,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 | T75 | Rojo real: cuádruple failed (sin modelo/regla/hook) | Verde: `102 passed` (2 archivos) + `011` en TEMP (vacía/guard/repetir) | Divulgación: `barberia.db` ganó tabla vacía `imputaciones_movimiento` por `create_all` (0 filas; baseline `86e6ea41…`). `imputacion_corte.py` + `011` + `jornada_service` (real abierta → allí; cerrada + abierta actual → ajuste; sin abierta → pendiente; una sola abierta) + hook en abono/compensación/devolución/resolución + `imputacion` en respuesta. Saldos intactos (pendiente igual mueve saldo). |
 | T76 | Rojo real: cuádruple failed (sin pertenencia/vínculo/momento); 2 ajustes honestos en tests (corte dentro de la jornada vía retroactivo admin; campo legacy faltante) | Verde: `106 passed` (2 archivos) + `012` en TEMP (vacía/guard/repetir) | Divulgación: `barberia.db` ganó tabla vacía `ajustes_cierre` por `create_all` (0 filas; baseline `8ca1788e…`). `jornada_caja.py` (`es_tardio` + `AjusteCierre`) + `012` + `jornada_service` (incorporar al cerrar, tardío por ajuste, `corte_en_cierre`) + `corte_bloqueado` con pertenencia verificada + momento en sync v2 (con hash; sin journals viejos con UUID en producción). Legacy-fecha no bloquea por construcción. |
 | T77 | Rojo real: doble failed (404 sin resumen + sin ajuste); legacy intacto en verde | Verde: `109 passed` (2 archivos) | DB estable; `jornadas.py` (GET resumen: devengado por snapshot si cerrada / vivo si abierta, cobros/pagos netos por imputación destino + métodos, ajustes/desconocidos/pendientes aparte) + `jornada_service` (`ajuste_por_correccion`) + hooks PATCH/anular (solo con pertenencia). Cierre original nunca muta; `total_cortes` legacy intacto. |
-| T78 |  |  |  |
+| T78 | Rojo real: doble 404 (sin endpoint); corrección honesta al paso (revisiones por ventana, no globales) | Verde: `112 passed` (2 archivos) | DB estable; `jornadas.py` (GET acumulados día/semana-Lun–Dom/mes/total acotado: comisiones por servicio, dinero por saldos, revisión/excedentes/desconocidos aparte) + tests. Resúmenes viejos intactos; estimada de sync sigue solo-dispositivo (sin pull). |
 | T79 |  |  |  |
 | T80 |  |  |  |
 | T81 |  |  |  |
