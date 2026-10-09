@@ -347,6 +347,59 @@ def test_abono_v2_corte_inexistente_404_sin_aplicar(client):
     db.close()
 
 
+def test_abono_uuid_distinto_payload_409(client):
+    """T86 (RF-32): misma UUID con distinto importe → 409, sin efecto."""
+    import uuid as uuid_lib
+    from app.models.finanzas_corte import MovimientoCorte as MovimientoT86b
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barb_t86", Rol.BARBERO)
+    servicio = _crear_servicio(db)
+    token = _token(client, "barb_t86")
+    corte_id = client.post(
+        "/api/cortes/", headers=_headers(token),
+        json={"servicio_id": servicio.id, "metodo_pago": "efectivo"},
+    ).json()["id"]
+    db.close()
+    uuid_val = str(uuid_lib.uuid4())
+    r1 = client.post("/api/sync/", headers=_headers(token),
+                     json={"operaciones": [_abono_v2(uuid_val, corte_id, importe="10.00")]})
+    assert r1.json()["resultados"][0]["aceptada"] is True
+    r2 = client.post("/api/sync/", headers=_headers(token),
+                     json={"operaciones": [_abono_v2(uuid_val, corte_id, importe="20.00")]})
+    resultado = r2.json()["resultados"][0]
+    assert resultado["aceptada"] is False
+    assert resultado["status_code"] == 409
+    db = TestingSessionLocal()
+    assert db.query(MovimientoT86b).filter(MovimientoT86b.uuid == uuid_val).count() == 1
+    db.close()
+
+
+def test_momento_iso_equivalente_mismo_hash(client):
+    """T86: '10:00:00' y '10:00:00.000000' con misma UUID → un solo corte."""
+    import uuid as uuid_lib
+    from app.models.corte import Corte as CorteT86
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "barb_t86m", Rol.BARBERO)
+    servicio = _crear_servicio(db)
+    token = _token(client, "barb_t86m")
+    db.close()
+    uuid_val = str(uuid_lib.uuid4())
+    for momento in ("2026-10-08T10:00:00", "2026-10-08T10:00:00.000000"):
+        r = client.post("/api/sync/", headers=_headers(token), json={"operaciones": [{
+            "id": uuid_val, "accion": "crear_corte_v2", "datos": {
+                "operacion_uuid": uuid_val, "servicio_id": servicio.id,
+                "metodo_pago": "efectivo", "modo_captura": "offline",
+                "momento_real": momento,
+            },
+        }]})
+        assert r.json()["resultados"][0]["aceptada"] is True
+    db = TestingSessionLocal()
+    assert db.query(CorteT86).count() == 1
+    db.close()
+
+
 def test_abono_v2_reintento_misma_uuid_no_duplica(client):
     """T52: misma UUID de abono reenviada no crea otro movimiento."""
     import uuid as uuid_lib

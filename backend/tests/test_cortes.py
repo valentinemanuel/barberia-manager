@@ -1882,11 +1882,14 @@ def test_resolver_revision_dinero_real_cubre_y_excedente(client):
 
 def test_resolver_revision_erronea_crea_compensatoria(client):
     """T59 (RF-53): erróneo con real 50 → compensatoria +50; original intacto."""
+    import uuid as uuid_lib
+
     corte_id, mov_uuid = _revision_por_exceso(client, "barbero_t59b")
     admin = "barbero_t59b_adm"
     r = _resolver(
         client, admin, corte_id, mov_uuid,
-        {"veredicto": "erroneo", "motivo": "duplicado con otro cobro", "importe_real": "50.00"},
+        {"veredicto": "erroneo", "motivo": "duplicado con otro cobro", "importe_real": "50.00",
+         "operacion_uuid": str(uuid_lib.uuid4()), "evidencia": "arqueo turno mañana"},
     )
     assert r.status_code == 200
     assert r.json()["tipo"] == "compensacion"
@@ -1898,7 +1901,7 @@ def test_resolver_revision_erronea_crea_compensatoria(client):
 
 
 def test_resolver_exige_motivo_y_admin(client):
-    """T59: sin motivo → 400; barbero → 403; ya resuelta → 409."""
+    """T59: sin motivo → 400; barbero → 403; replay real → acuse 200 (T86)."""
     corte_id, mov_uuid = _revision_por_exceso(client, "barbero_t59c")
     admin = "barbero_t59c_adm"
     assert _resolver(
@@ -1910,9 +1913,46 @@ def test_resolver_exige_motivo_y_admin(client):
     assert _resolver(
         client, admin, corte_id, mov_uuid, {"veredicto": "real", "motivo": "ok"}
     ).status_code == 200
-    assert _resolver(
+    r = _resolver(
         client, admin, corte_id, mov_uuid, {"veredicto": "real", "motivo": "otra vez"}
-    ).status_code == 409
+    )
+    assert r.status_code == 200
+    assert r.json()["estado"] == "aceptado"
+
+
+def test_erroneo_exige_uuid_y_no_duplica(client):
+    """T86: erróneo sin UUID → 409; con UUID el replay devuelve la misma fila."""
+    import uuid as uuid_lib
+    from app.models.finanzas_corte import MovimientoCorte as MovimientoT86
+
+    corte_id, mov_uuid = _revision_por_exceso(client, "barbero_t86")
+    admin = "barbero_t86_adm"
+    assert _resolver(client, admin, corte_id, mov_uuid, {
+        "veredicto": "erroneo", "motivo": "m", "importe_real": "50.00", "evidencia": "e",
+    }).status_code == 409
+    uuid_val = str(uuid_lib.uuid4())
+    cuerpo = {"veredicto": "erroneo", "motivo": "m", "importe_real": "50.00",
+              "operacion_uuid": uuid_val, "evidencia": "e"}
+    assert _resolver(client, admin, corte_id, mov_uuid, cuerpo).status_code == 200
+    assert _resolver(client, admin, corte_id, mov_uuid, cuerpo).status_code == 200
+    db = TestingSessionLocal()
+    assert db.query(MovimientoT86).filter(MovimientoT86.uuid == uuid_val).count() == 1
+    db.close()
+
+
+def test_compensacion_positiva_exige_evidencia(client):
+    """T86 (RF-41): +10 sin evidencia → 400; con evidencia → 201."""
+    corte_id = _corte_para_abonos(client, "barbero_t86b")
+    token = _token_para(client, "barbero_t86b")
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_t86b", Rol.ADMIN)
+    db.close()
+    original_uuid = _abonar(client, token, corte_id, "cliente", 100).json()["uuid"]
+    base = {"concepto": "cliente", "importe": "10.00", "original_uuid": original_uuid}
+    assert _compensar(client, "admin_t86b", corte_id, {**base, "motivo": "m"}).status_code == 400
+    assert _compensar(client, "admin_t86b", corte_id, {
+        **base, "motivo": "m", "evidencia": "comprobante 7",
+    }).status_code == 201
 
 
 def _compensar(client, admin_login, corte_id, body):

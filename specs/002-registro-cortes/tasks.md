@@ -1085,7 +1085,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - Implementar: `POST /api/jornadas/{id}/imputaciones` solo admin (misma UoW, sin auto-aplicar nada más).
   - Hecho cuando: tests en verde y ningún pendiente queda sin estado tras abrir su jornada.
 
-- [ ] **T86. Idempotencia dura.** RF-32/RF-41/RF-53 (cierre).
+- [x] **T86. Idempotencia dura.** RF-32/RF-41/RF-53 (cierre).
   - Dependencias: ninguna (backend puro).
   - Tests primero: erroneo re-ejecutable exige UUID (sin UUID → 409, no duplica); compensación positiva exige evidencia; replay `real` devuelve acuse (no 409); UUID movimiento con distinto payload → 409; momento normalizado (ISO equivalentes, mismo hash).
   - Implementar: normalizar `momento.isoformat()`, comparar hash en abonos, UUID obligatoria en resolución-erroneo, evidencia si compensación > 0.
@@ -1115,7 +1115,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 | T83 | Rojo real: 8 puentes (toFixed redondeo, Math.round, Number, display) | Verde: `VERDE T83` + T82 + `npm run build` OK (exit 0) | Solo frontend + opt-out aditivo en `api.ts` (`X-Exacto`, default intacto): 3 páginas por `apiExacta` (strings), estimada/cobro en centavos, display con `formatearMonedaExacta`, `porcentajeACentesimas`/`numeroCatalogoACentavos` documentados. DB intacta. |
 | T84 | Rojo real: 9 puentes (3 inputs + 3 displays + duplicado de interfaz) | Verde: `VERDE T84` + T82/T83 + `npm run build` OK (exit 0) | Solo frontend: `cortesApi.ts` (`validarPorcentajeStr`) + Gestion* (precio/porcentaje como strings validados, display exacto; conteos enteros intactos) + Reportes (vía exacta + interfaz única). Incidente honesto: script con `≤` truncó GestionUsuarios (consola Windows); restaurado por git y rehecho con ediciones. Locale/diseño intactos. |
 | T85 | Rojo real: doble 404 (sin endpoint) | Verde: `116 passed` (2 archivos) | DB estable; `jornada_service.py` (`imputar_pendientes` idempotente por estado) + `jornadas.py` (POST solo admin 403/404) + tests (imputa, replay 0, solo su jornada, 403). Sin auto-aplicar nada más. |
-| T86 |  |  |  |
+| T86 | Rojo real: múltiple (409/400/acuse/hash sin implementar) | Verde: `140 passed` (3 archivos) | DB estable; 5 endurecimientos: erroneo exige UUID (409; migración honesta del test T59), compensación positiva y real-erroneo exigen evidencia, replay real→acuse vía journal (router sin duplicar journal; migración del test T59), UUID con distinto payload→409 en abono/compensación/devolución, momento normalizado (`Z`, micro 0) en hash. |
 | T87 |  |  |  |
 | T88 |  |  |  |
 | T89 |  |  |  |

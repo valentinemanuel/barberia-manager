@@ -56,6 +56,13 @@ def registrar_abono(
             db.query(MovimientoCorte).filter(MovimientoCorte.uuid == uuid).first()
         )
         if existente is not None:
+            if existente.concepto != concepto or existente.importe != importe_ok:
+                # Misma UUID con distinto contenido (T86, RF-32).
+                from app.services.operacion_corte_service import ConflictoIdentidad
+
+                raise ConflictoIdentidad(
+                    "Conflicto de identidad: el movimiento ya existe con otro contenido"
+                )
             return existente
     causa_revision: str | None = None
     if origen == "online":
@@ -240,6 +247,23 @@ def _validar_importe_real(importe: Decimal) -> Decimal:
     return importe
 
 
+def resolucion_previa(db: Session, movimiento: MovimientoCorte) -> bool:
+    """Hubo resolución previa sobre este movimiento (journal RESOLUCION)."""
+    from app.models.auditoria_corte import AccionAuditoriaCorte, AuditoriaCorte
+
+    filas = (
+        db.query(AuditoriaCorte)
+        .filter(
+            AuditoriaCorte.corte_id == movimiento.corte_id,
+            AuditoriaCorte.accion == AccionAuditoriaCorte.RESOLUCION,
+        )
+        .all()
+    )
+    return any(
+        (fila.despues or {}).get("movimiento_uuid") == movimiento.uuid for fila in filas
+    )
+
+
 def resolver_revision(
     db: Session,
     *,
@@ -249,6 +273,7 @@ def resolver_revision(
     motivo: str,
     importe_real: Decimal | None = None,
     operacion_uuid: str | None = None,
+    evidencia: str | None = None,
 ) -> MovimientoCorte:
     """Resuelve una revisión administrativa (paquete 9, RF-38/RF-53 parcial).
 
@@ -260,6 +285,10 @@ def resolver_revision(
     con referencia al original. Sin commit: la UoW la posee el llamador.
     """
     if movimiento.estado != EstadoMovimiento.REVISION:
+        # Replay (T86, RF-32): si ya se resolvió, devuelve el acuse sin
+        # efecto; si nunca estuvo en revisión, es conflicto de estado.
+        if resolucion_previa(db, movimiento):
+            return movimiento
         raise RevisionResuelta("La revisión ya fue resuelta")
     if not motivo or not motivo.strip():
         raise ValueError("La resolución exige motivo")
@@ -271,18 +300,24 @@ def resolver_revision(
         return movimiento
     if veredicto != "erroneo":
         raise ValueError("El veredicto debe ser real o erroneo")
+    if operacion_uuid is None:
+        # Sin UUID un reintento duplicaría la compensatoria (T86): se exige.
+        raise RevisionResuelta("La resolución erronea exige operacion_uuid para no duplicar")
     real = _validar_importe_real(Decimal("0") if importe_real is None else importe_real)
-    if operacion_uuid is not None:
-        existente = (
-            db.query(MovimientoCorte).filter(MovimientoCorte.uuid == operacion_uuid).first()
-        )
-        if existente is not None:
-            return existente
+    existente = (
+        db.query(MovimientoCorte).filter(MovimientoCorte.uuid == operacion_uuid).first()
+    )
+    if existente is not None:
+        return existente
     movimiento.motivo = motivo.strip()
     if real <= Decimal("0"):
         # Sin dinero real: solo queda la traza del motivo en el original.
         db.flush()
         return movimiento
+    if not evidencia or not evidencia.strip():
+        # Reconocer dinero exige evidencia (T86, RF-41): sin ella la
+        # capacidad se inflaría con una afirmación sin respaldo.
+        raise ValueError("Reconocer dinero real exige evidencia")
     compensatoria = MovimientoCorte(
         uuid=operacion_uuid or str(uuid4()),
         corte_id=movimiento.corte_id,
@@ -295,6 +330,7 @@ def resolver_revision(
         estado=EstadoMovimiento.ACEPTADO,
         original_uuid=movimiento.uuid,
         motivo=motivo.strip(),
+        evidencia=evidencia.strip(),
         profesional_id=movimiento.profesional_id,
     )
     db.add(compensatoria)
@@ -354,6 +390,10 @@ def registrar_compensacion(
     if not motivo or not motivo.strip():
         raise ValueError("La compensación exige motivo")
     importe_ok = _validar_importe_compensacion(importe)
+    if importe_ok > Decimal("0") and (not evidencia or not evidencia.strip()):
+        # Una compensación positiva reconoce dinero: sin evidencia inflaría
+        # la capacidad de devolución (T86, RF-41).
+        raise ValueError("La compensación positiva exige evidencia")
     original = (
         db.query(MovimientoCorte)
         .filter(
@@ -369,6 +409,12 @@ def registrar_compensacion(
             db.query(MovimientoCorte).filter(MovimientoCorte.uuid == operacion_uuid).first()
         )
         if existente is not None:
+            if existente.concepto != concepto or existente.importe != importe_ok:
+                from app.services.operacion_corte_service import ConflictoIdentidad as ConflictoT86
+
+                raise ConflictoT86(
+                    "Conflicto de identidad: el movimiento ya existe con otro contenido"
+                )
             return existente
     fila = MovimientoCorte(
         uuid=operacion_uuid or str(uuid4()),
@@ -431,6 +477,12 @@ def registrar_devolucion(
             db.query(MovimientoCorte).filter(MovimientoCorte.uuid == operacion_uuid).first()
         )
         if existente is not None:
+            if existente.concepto != concepto or existente.importe != importe_ok:
+                from app.services.operacion_corte_service import ConflictoIdentidad as ConflictoT86b
+
+                raise ConflictoT86b(
+                    "Conflicto de identidad: el movimiento ya existe con otro contenido"
+                )
             return existente
     if importe_ok > capacidad_devolucion(db, corte, concepto):
         raise ValueError("La devolución supera el dinero reconocido no devuelto")

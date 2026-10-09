@@ -10,6 +10,7 @@ from app.models.corte import MetodoPago
 from app.models.usuario import Rol, Usuario
 from app.services.corte_service import crear_corte
 from app.services.operacion_corte_service import (
+    ConflictoIdentidad,
     ReintentosAgotados,
     ejecutar_operacion,
 )
@@ -128,9 +129,13 @@ def _sincronizar_corte_v2(
         from datetime import timezone as timezone_sync
 
         try:
-            momento = datetime_sync.fromisoformat(str(momento_raw))
+            # Normalización canónica (T86): `Z`→UTC y microsegundos a cero
+            # para que ISOs equivalentes den el mismo hash idempotente.
+            texto = str(momento_raw).replace("Z", "+00:00")
+            momento = datetime_sync.fromisoformat(texto)
             if momento.tzinfo is not None:
                 momento = momento.astimezone(timezone_sync.utc).replace(tzinfo=None)
+            momento = momento.replace(microsecond=0)
         except ValueError as e:
             return ResultadoOperacion(
                 id=op.id, accion=op.accion, aceptada=False, status_code=400,
@@ -303,6 +308,12 @@ def _sincronizar_abono_v2(
             db, autor=usuario, corte=corte, concepto=concepto,
             importe=importe, metodo=metodo, momento_real=momento,
             uuid=str(uuid_val), origen="offline",
+        )
+    except ConflictoIdentidad as e:
+        db.rollback()
+        return ResultadoOperacion(
+            id=op.id, accion=op.accion, aceptada=False, status_code=409,
+            motivo=str(e), notificacion="La operación ya existe con otro contenido.",
         )
     except ValueError as e:
         db.rollback()
