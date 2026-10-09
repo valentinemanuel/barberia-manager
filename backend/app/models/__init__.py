@@ -19,6 +19,7 @@ from app.models.finanzas_corte import (
     TipoMovimiento,
 )
 from app.models.intervencion_corte import IntervencionCorte, EstadoIntervencion
+from app.models.jornada_caja import JornadaCaja, EstadoJornada, PertenenciaCierre
 from app.models.auditoria_corte import AuditoriaCorte, AccionAuditoriaCorte
 
 __all__ = [
@@ -41,6 +42,9 @@ __all__ = [
     "TipoMovimiento",
     "IntervencionCorte",
     "EstadoIntervencion",
+    "JornadaCaja",
+    "EstadoJornada",
+    "PertenenciaCierre",
     "AuditoriaCorte",
     "AccionAuditoriaCorte",
 ]

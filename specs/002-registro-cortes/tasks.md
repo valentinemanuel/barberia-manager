@@ -965,7 +965,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 
 ### Tareas en orden de dependencia
 
-- [ ] **T74. JornadaCaja + fecha de negocio.** RF-45 (base), RNF-2.
+- [x] **T74. JornadaCaja + fecha de negocio.** RF-45 (base), RNF-2.
   - Dependencias: ninguna dentro del paquete.
   - Tests primero: `history` muestra `010`; `fecha_negocio` pura (`2026-10-08T02:59Z` → jornada 07, `03:01Z` → 08, zona `America/Argentina/Buenos_Aires`); apertura admin crea `abierta`, segunda apertura → 409; cierre deja `cerrada` inmutable; barbero abre/cierra → 403.
   - Implementar: `models/jornada_caja.py` + `010` (CREATE con guard) + `services/jornada_service.py` + `POST /api/jornadas/abrir|cerrar` solo admin.
@@ -1017,7 +1017,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 
 | Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
 |---|---|---|---|
-| T74 |  |  |  |
+| T74 | Rojo real: cuádruple failed (404 sin router/modelo) + `ZoneInfoNotFoundError` en Windows | Verde: `27 passed` (2 archivos) + `010` en TEMP (vacía/guard/repetir) | Divulgación: `barberia.db` ganó tablas vacías `jornadas_caja` + `pertenencias_cierre` por `create_all` (0 filas, legacy intacto; baseline `8c5a43be…`). `jornada_caja.py` + `010` + `jornada_service.py` (fecha_negocio pura, abrir/cerrar con 409, sin apertura automática) + `jornadas.py` (solo admin 403) + `main.py` (registro) + `requirements.txt` (`tzdata`, solo datos de zona). |
 | T75 |  |  |  |
 | T76 |  |  |  |
 | T77 |  |  |  |
