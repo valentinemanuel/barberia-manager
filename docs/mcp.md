@@ -18,7 +18,7 @@ La plantilla `opencode.json.example` recupera la configuración documental de la
 | sqlite | Inspección de la base local | `uvx` y la base `backend/barberia.db`. La ruta es relativa a la raíz del workspace. No activar en un worktree sin la base: no copiar datos reales ni crear/modificar una base sin autorización. |
 | github | Consulta y gestión del repositorio | Definir `GITHUB_PERSONAL_ACCESS_TOKEN` en el entorno antes de iniciar OpenCode, con los permisos mínimos necesarios. La plantilla utiliza sustitución `{env:GITHUB_PERSONAL_ACCESS_TOKEN}`, no un token literal. |
 
-La plantilla conserva `mcp==1.2.0` del ajuste histórico de SQLite. No se afirma compatibilidad con versiones nuevas del paquete ni se ha iniciado ese servidor para validar la plantilla; verificarlo en el entorno real antes de usarlo.
+El servidor SQLite quedó verificado el 2026-10-09 con `mcp-server-sqlite` 2025.4.25 y los pines `mcp==1.9.4` y `pydantic==2.11.7`. Los pines son obligatorios: `pydantic` ≥2.12 eliminó `eval_type_backport` (error de importación con `mcp` ≤1.15) y `mcp` ≥1.16 eliminó `Server.list_resources` (que `mcp-server-sqlite` 2025.4.25 sigue usando). Sin los pines, `uvx` resuelve `pydantic` 2.14 y el servidor falla al iniciar. En este entorno `uvx` no está en el PATH; la configuración local usa la ruta absoluta del directorio `Scripts` del Python de Microsoft Store.
 
 ## Verificación
 
