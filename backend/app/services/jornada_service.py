@@ -244,3 +244,32 @@ def imputar_movimiento(
     db.add(fila)
     db.flush()
     return fila
+
+
+def ajuste_por_correccion(
+    db: Session, *, corte_id: int, autor_id: int, motivo: str, detalle: dict
+) -> None:
+    """Registra la corrección sobre un corte con pertenencia (RF-39, T77).
+
+    El cierre original no muta: el ajuste referencia jornada y cambio.
+    Sin pertenencia no hay nada que ajustar. Sin commit.
+    """
+    from app.models.jornada_caja import AjusteCierre, PertenenciaCierre, TipoAjuste
+
+    pertenencia = (
+        db.query(PertenenciaCierre)
+        .filter(PertenenciaCierre.corte_id == corte_id)
+        .first()
+    )
+    if pertenencia is None:
+        return
+    db.add(AjusteCierre(
+        tipo=TipoAjuste.CORRECCION,
+        corte_id=corte_id,
+        jornada_origen_id=pertenencia.jornada_id,
+        jornada_destino_id=None,
+        detalle=detalle,
+        autor_id=autor_id,
+        motivo=motivo,
+    ))
+    db.flush()

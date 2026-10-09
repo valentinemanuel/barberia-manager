@@ -343,3 +343,60 @@ def test_cierre_legacy_no_bloquea(client):
     corte_id = _corte_simple(client, token, servicio_id)
     assert client.patch(f"/api/cortes/{corte_id}", json={"metodo_pago": "tarjeta"},
                         headers=_headers(token)).status_code == 200
+
+
+def test_resumen_separa_devengado_de_caja(client):
+    """T77 (RF-45): servicios vs dinero cobrado/pagado por método."""
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_j77", Rol.ADMIN)
+    servicio_id = _servicio_y_usuarios(db, "barb_j77")
+    db.close()
+    auth_admin = _headers(_token(client, "admin_j77"))
+    hoy = _abrir_hoy(client, _token(client, "admin_j77"))
+    token = _token(client, "barb_j77")
+    corte_id = _corte_simple(client, token, servicio_id)
+    assert client.post(f"/api/cortes/{corte_id}/movimientos", headers=_headers(token), json={
+        "concepto": "cliente", "importe": "40.00", "metodo_pago": "tarjeta",
+    }).status_code == 201
+    r = client.get(f"/api/jornadas/resumen?fecha={hoy}", headers=auth_admin)
+    assert r.status_code == 200
+    data = r.json()
+    assert data["devengado"]["cortes"] == 1
+    assert data["devengado"]["total"] == "100.00"
+    assert data["cobros"]["total"] == "40.00"
+    assert data["cobros"]["por_metodo"]["tarjeta"] == "40.00"
+    assert data["pagos"]["total"] == "0.00"
+
+
+def test_correccion_sobre_cerrado_genera_ajuste(client):
+    """T77 (RF-39): corregir corte de jornada cerrada deja ajuste sin mutar el cierre."""
+    from app.models.jornada_caja import AjusteCierre, PertenenciaCierre
+
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_j77b", Rol.ADMIN)
+    servicio_id = _servicio_y_usuarios(db, "barb_j77b")
+    db.close()
+    auth_admin = _headers(_token(client, "admin_j77b"))
+    hoy = _abrir_hoy(client, _token(client, "admin_j77b"))
+    token = _token(client, "barb_j77b")
+    corte_id = _corte_simple(client, token, servicio_id)
+    assert client.post("/api/jornadas/cerrar", headers=auth_admin, json={"fecha": hoy}).status_code == 200
+    r = client.patch(f"/api/cortes/{corte_id}", json={"metodo_pago": "tarjeta", "motivo": "corrige método"},
+                     headers=auth_admin)
+    assert r.status_code == 200
+    db = TestingSessionLocal()
+    ajustes = db.query(AjusteCierre).filter(AjusteCierre.corte_id == corte_id).all()
+    assert len(ajustes) == 1
+    assert ajustes[0].tipo.value == "correccion"
+    assert db.query(PertenenciaCierre).filter(PertenenciaCierre.corte_id == corte_id).count() == 1
+    db.close()
+
+
+def test_legacy_resumen_intacto(client):
+    """T77 (RNF-3): el resumen legacy sigue respondiendo igual."""
+    db = TestingSessionLocal()
+    _crear_usuario(db, "admin_j77c", Rol.ADMIN)
+    db.close()
+    r = client.get("/api/cierre-caja/resumen/dia", headers=_headers(_token(client, "admin_j77c")))
+    assert r.status_code == 200
+    assert "total_cortes" in r.json()

@@ -75,3 +75,122 @@ def listar(
 ):
     """Jornadas registradas (solo admin)."""
     return db.query(JornadaCaja).order_by(JornadaCaja.fecha_negocio).all()
+
+
+class ResumenCaja(BaseModel):
+    fecha: date
+    estado: EstadoJornada
+    devengado: dict
+    cobros: dict
+    pagos: dict
+    ajustes: int
+    desconocidos: int
+    pendientes: int
+
+
+@router.get("/resumen", response_model=ResumenCaja)
+def resumen(
+    fecha: date,
+    db: Session = Depends(get_db),
+    admin: Usuario = Depends(requerir_admin),
+):
+    """Caja de la jornada (paquete 11, RF-45 parcial, T77).
+
+    Servicios realizados (devengado) separados del dinero cobrado/pagado
+    por método; ajustes y desconocidos aparte. El cierre legacy no se
+    toca: este resumen vive en endpoints nuevos.
+    """
+    from decimal import Decimal
+
+    from app.models.corte import Corte
+    from app.models.finanzas_corte import (
+        ConceptoMovimiento,
+        EstadoMovimiento,
+        MovimientoCorte,
+        TipoMovimiento,
+    )
+    from app.models.imputacion_corte import EstadoImputacion, ImputacionMovimiento
+    from app.models.jornada_caja import AjusteCierre, PertenenciaCierre
+    from app.services.jornada_service import rango_utc
+
+    jornada = db.query(JornadaCaja).filter(JornadaCaja.fecha_negocio == fecha).first()
+    if jornada is None:
+        raise HTTPException(status_code=404, detail="Jornada no registrada")
+    centavo = Decimal("0.01")
+    if jornada.estado == EstadoJornada.CERRADA:
+        filas = (
+            db.query(PertenenciaCierre)
+            .filter(PertenenciaCierre.jornada_id == jornada.id)
+            .all()
+        )
+        n_cortes = len(filas)
+        total_dev = sum((f.precio for f in filas), Decimal("0"))
+    else:
+        inicio, fin = rango_utc(fecha)
+        cortes = (
+            db.query(Corte)
+            .filter(Corte.fecha >= inicio, Corte.fecha < fin, Corte.anulado_en.is_(None))
+            .all()
+        )
+        n_cortes = len(cortes)
+        total_dev = sum((c.precio for c in cortes), Decimal("0"))
+    movs = (
+        db.query(MovimientoCorte, ImputacionMovimiento)
+        .join(ImputacionMovimiento, ImputacionMovimiento.movimiento_uuid == MovimientoCorte.uuid)
+        .filter(
+            ImputacionMovimiento.jornada_destino_id == jornada.id,
+            MovimientoCorte.estado == EstadoMovimiento.ACEPTADO,
+        )
+        .all()
+    )
+    cobros = Decimal("0")
+    pagos = Decimal("0")
+    por_metodo: dict[str, Decimal] = {}
+    for mov, _imp in movs:
+        signo = Decimal("-1") if mov.tipo == TipoMovimiento.DEVOLUCION else Decimal("1")
+        neto = mov.importe * signo
+        if mov.concepto == ConceptoMovimiento.CLIENTE:
+            cobros += neto
+        else:
+            pagos += neto
+        if mov.tipo == TipoMovimiento.ABONO:
+            metodo = mov.metodo_pago.value if hasattr(mov.metodo_pago, "value") else str(mov.metodo_pago)
+            por_metodo[metodo] = por_metodo.get(metodo, Decimal("0")) + mov.importe
+    ajustes = (
+        db.query(AjusteCierre)
+        .filter(
+            (AjusteCierre.jornada_origen_id == jornada.id)
+            | (AjusteCierre.jornada_destino_id == jornada.id)
+        )
+        .count()
+    )
+    inicio, fin = rango_utc(fecha)
+    desconocidos = (
+        db.query(Corte)
+        .filter(Corte.fecha >= inicio, Corte.fecha < fin)
+        .filter(
+            (Corte.deuda_conocida.is_(False)) | (Corte.comision_conocida.is_(False))
+        )
+        .count()
+    )
+    pendientes = (
+        db.query(ImputacionMovimiento)
+        .filter(
+            ImputacionMovimiento.jornada_real == fecha,
+            ImputacionMovimiento.estado == EstadoImputacion.PENDIENTE,
+        )
+        .count()
+    )
+    return ResumenCaja(
+        fecha=fecha,
+        estado=jornada.estado,
+        devengado={"cortes": n_cortes, "total": str(total_dev.quantize(centavo))},
+        cobros={
+            "total": str(cobros.quantize(centavo)),
+            "por_metodo": {k: str(v.quantize(centavo)) for k, v in por_metodo.items()},
+        },
+        pagos={"total": str(pagos.quantize(centavo))},
+        ajustes=ajustes,
+        desconocidos=desconocidos,
+        pendientes=pendientes,
+    )
