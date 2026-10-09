@@ -1001,7 +1001,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
   - Implementar: `CierreCaja.tsx` con apertura/cierre/pendientes/resumen nuevo (sin `parseFloat` nuevo); legacy del formulario snapshot retirado del flujo (endpoint viejo intacto).
   - Hecho cuando: tests node + build en verde, sin `any` ni aritmética float nueva.
 
-- [ ] **T80. UI barbero: imputación y cobertura.** RF-12/RF-53 (parciales), RNF-4.
+- [x] **T80. UI barbero: imputación y cobertura.** RF-12/RF-53 (parciales), RNF-4.
   - Dependencias: T75–T78.
   - Tests primero: `MisSaldos.tsx` muestra pendiente de imputación con saldo + motivo de solicitud de apertura; desconocidos ya visibles (T64/T71) sin cambios; build en verde.
   - Implementar: badges/estados desde los endpoints nuevos; sin rediseño.
@@ -1023,5 +1023,5 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 | T77 | Rojo real: doble failed (404 sin resumen + sin ajuste); legacy intacto en verde | Verde: `109 passed` (2 archivos) | DB estable; `jornadas.py` (GET resumen: devengado por snapshot si cerrada / vivo si abierta, cobros/pagos netos por imputación destino + métodos, ajustes/desconocidos/pendientes aparte) + `jornada_service` (`ajuste_por_correccion`) + hooks PATCH/anular (solo con pertenencia). Cierre original nunca muta; `total_cortes` legacy intacto. |
 | T78 | Rojo real: doble 404 (sin endpoint); corrección honesta al paso (revisiones por ventana, no globales) | Verde: `112 passed` (2 archivos) | DB estable; `jornadas.py` (GET acumulados día/semana-Lun–Dom/mes/total acotado: comisiones por servicio, dinero por saldos, revisión/excedentes/desconocidos aparte) + tests. Resúmenes viejos intactos; estimada de sync sigue solo-dispositivo (sin pull). |
 | T79 | Rojo real: `ROJO T79: falta src/services/cajaVista.ts` (exit 1); función enredada simplificada antes del verde | Verde: `VERDE T79` + `npm run build` OK (exit 0) | Solo frontend: `cajaVista.ts` (puro, sin float) + `scripts/t79-test.mjs` + `CierreCaja.tsx` reescrita (apertura/cierre/pendientes/resumen nuevo, 0 `parseFloat`; formulario snapshot legacy fuera de la pantalla, endpoint intacto). Sin `any`. |
-| T80 |  |  |  |
+| T80 | Rojo real: `ROJO T80: falta resumenImputacion` (exit 1) | Verde: `VERDE T80` + T64 + `npm run build` OK (exit 0) | Solo frontend: `saldosVista.ts` (`resumenImputacion` + campo) + `scripts/t80-test.mjs` + `MisSaldos.tsx` (aviso con saldo y solicitud de apertura). Desconocidos ya visibles (T64/T71, sin cambios). |
 | T81 |  |  |  |

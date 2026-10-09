@@ -11,6 +11,7 @@ import { Tarjeta, Vacio, SkeletonLineas, Segmentado, Boton } from '../components
 import { formatearMoneda, formatearFecha } from '../utils/formato'
 import {
   motivosVisibles,
+  resumenImputacion,
   revisionesVisibles,
   textoExcedente,
   type MovimientoVista,
@@ -206,6 +207,7 @@ export default function MisSaldos() {
         {filas.map(({ corte, saldos, movimientos }) => {
           const revisiones = revisionesVisibles(movimientos)
           const motivos = motivosVisibles(movimientos)
+          const imputacion = resumenImputacion(movimientos)
           const excedenteCliente = saldos ? textoExcedente({ excedente: String(saldos.cliente.excedente) }) : null
           const excedenteComision = saldos ? textoExcedente({ excedente: String(saldos.comision.excedente) }) : null
           const desconocidoCliente = saldos && (saldos.cliente.estado === 'desconocido')
@@ -242,6 +244,7 @@ export default function MisSaldos() {
                   ))}
                 </ul>
               )}
+              {imputacion && <p>{imputacion}</p>}
               {!corte.anulado_en && (
                 <div>
                   <Segmentado
