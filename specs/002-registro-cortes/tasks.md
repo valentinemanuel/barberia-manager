@@ -1063,7 +1063,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 
 ### Tareas en orden de dependencia
 
-- [ ] **T82. Cliente typed core.** RNF-1/RNF-6.
+- [x] **T82. Cliente typed core.** RNF-1/RNF-6.
   - Dependencias: ninguna dentro del paquete.
   - Tests primero (node, patrón T50–T80): `cortesApi.ts` conserva strings exactos del API (sin `Number()` global), codec dígitos en ambos sentidos, `formatearMoneda` acepta string exacto; `npm run build` en verde.
   - Implementar: fetch typed para 002 + sobrecarga `formatearMoneda(string)`; `api.ts` intacto.
@@ -1111,7 +1111,7 @@ Aprobación recibida: 5 preguntas de casos límite respondidas por el usuario (2
 
 | Tarea | Resultado inicial / causa | Resultado final | Comando / observaciones |
 |---|---|---|---|
-| T82 |  |  |  |
+| T82 | Rojo real: `ROJO T82` (exit 1) + harness (nodenext/extensión/import + firma fábrica) | Verde: `VERDE T82` + `npm run build` OK (exit 0) | Solo frontend: `cortesApi.ts` (nuevo, parseo exacto + codec reexportado, http inyectado) + `formato.ts` (`formatearMonedaExacta` por dígitos; `formatearMoneda(number)` intacto) + `scripts/t82-test.mjs`. `api.ts` intacto. |
 | T83 |  |  |  |
 | T84 |  |  |  |
 | T85 |  |  |  |

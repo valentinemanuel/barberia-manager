@@ -43,6 +43,21 @@ export function formatearMoneda(monto: number): string {
   return `$${formateadorMoneda.format(monto)}`
 }
 
+/**
+ * Formatea un string exacto del API como `$1,234.56` (paquete 12, T82).
+ * Sin pasar por binario: agrupa miles por dígitos y conserva 2 decimales.
+ */
+export function formatearMonedaExacta(pesos: string): string {
+  const limpio = pesos.trim()
+  const partes = limpio.split('.')
+  if (partes.length > 2 || !/^\d+$/.test(partes[0]) || (partes[1] !== undefined && !/^\d{1,2}$/.test(partes[1]))) {
+    throw new Error('El importe exacto debe ser dígitos con dos decimales como máximo')
+  }
+  const enteros = partes[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  const dec = (partes[1] ?? '').padEnd(2, '0')
+  return `$${enteros}.${dec}`
+}
+
 /** Formatea un entero con separador de miles: `1,250`. */
 export function formatearEntero(valor: number): string {
   return formateadorEntero.format(valor)
